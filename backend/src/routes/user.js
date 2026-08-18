@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { all, first, run } from '../lib/db.js';
 import { ok, created, fail, nowIso, uuid } from '../lib/response.js';
 import { protect } from '../middleware/auth.js';
+import { listActiveCountries } from '../services/country.js';
 
 const app = new Hono();
 app.use('*', protect);
@@ -12,6 +13,16 @@ app.get('/me', async c => {
   delete u.passwordHash; return ok(c,{ user:{ ...u, _id:u.id, addresses:addresses.map(a=>({...a,_id:a.id})), wishlist:wish } });
 });
 app.put('/me', async c => { const b=await c.req.json(), u=c.get('user'); await run(c.env.DB.prepare('UPDATE users SET name=?,firstName=?,lastName=?,phone=?,gender=?,avatar=?,updatedAt=? WHERE id=?').bind(b.name??u.name,b.firstName??u.firstName,b.lastName??u.lastName,b.phone??u.phone,b.gender??u.gender,b.avatar??u.avatar,nowIso(),u.id)); return ok(c,{user:{...u,...b,_id:u.id}}); });
+/* حفظ بلد المستخدم — الخادم يتحقق من الكود ضد countries المفعّلة (ممنوع حفظ أكواد اعتباطية). */
+app.put('/me/country', async c => {
+  const b = await c.req.json().catch(()=>({}));
+  const code = String(b.country || '').trim().toUpperCase();
+  const active = await listActiveCountries(c.env);
+  const row = active.find(r => String(r.code).toUpperCase() === code);
+  if (!row) return fail(c, 'البلد المطلوب غير متاح', 400);
+  await run(c.env.DB.prepare('UPDATE users SET country=?, updatedAt=? WHERE id=?').bind(row.code, nowIso(), c.get('user').id));
+  return ok(c, { country: row.code, user: { ...c.get('user'), country: row.code } }, 'تم حفظ البلد');
+});
 app.get('/addresses', async c => ok(c,{ addresses:(await all(c.env.DB.prepare('SELECT * FROM addresses WHERE userId=? ORDER BY isDefault DESC,createdAt DESC').bind(c.get('user').id))).map(a=>({...a,_id:a.id})) }));
 app.post('/addresses', async c => {
   const b=await c.req.json(), id=uuid(), now=nowIso();

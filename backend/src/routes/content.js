@@ -2,9 +2,14 @@ import { Hono } from 'hono';
 import { all, first, run } from '../lib/db.js';
 import { ok, created, nowIso, uuid, parseJson } from '../lib/response.js';
 import { getSettings, publicSettings, updateSettings } from '../services/settings.js';
+import { countryMiddleware, shippingForCountry, filterMethodsForCountry } from '../services/country.js';
 import { verifyJwt } from '../lib/crypto.js';
 
 const app = new Hono();
+
+/* المرحلة D: حلّ البلد مركزياً لكل مسارات المتجر العامة (المحافظات/الدفع/الشحن).
+   حلّ البلد يحدث مرة واحدة هنا ويُقرأ من c.var.country/countryRow في كل المعالجات. */
+app.use('/storefront/*', countryMiddleware);
 
 app.get('/settings', async c => ok(c, publicSettings(await getSettings(c.env))));
 
@@ -25,6 +30,20 @@ async function canPreview(c) {
 app.get('/storefront/config', async c => {
   const s = await getSettings(c.env);
   const preview = await canPreview(c);
+  /* البلد المحسوب خادمياً — العملة والشحن والمحافظات ووسائل الدفع كلها من D1 */
+  const countryRow = c.get('countryRow');
+  const activeCountries = c.get('countries') || [];
+  const effSettings = {
+    ...s,
+    shipping: shippingForCountry(s.shipping, countryRow),
+    payment: {
+      ...s.payment,
+      currency: countryRow.currency,
+      currencySymbol: countryRow.currencySymbol,
+      currencySymbolEn: countryRow.currencySymbolEn,
+      currencyPosition: countryRow.currencyPosition || s.payment?.currencyPosition || 'after'
+    }
+  };
   const rows = await all(c.env.DB.prepare('SELECT * FROM home_sections WHERE isActive=1 ORDER BY sortOrder ASC, createdAt ASC'));
   const sections = rows
     .map((row) => {
@@ -47,19 +66,33 @@ app.get('/storefront/config', async c => {
     delete shaped.data;
     return shaped;
   });
+  /* وسائل الدفع المتاحة لهذا البلد فقط (config.countries داخل JSON — المرحلة D) */
+  const allMethods = (await all(c.env.DB.prepare('SELECT * FROM payment_methods WHERE isActive=1 AND isVisible=1 ORDER BY sortOrder'))).map((m) => {
+    /* تفكيك config JSON (أرقام الحسابات/المحافظ/QR/الأيقونة) إلى أعلى الكائن
+       حتى تقرأها واجهة الدفع مباشرة — البيانات من D1 حصراً لا من الكود */
+    const cfg = parseJson(m.config, {});
+    return { ...m, ...cfg, _id: m.id, config: cfg };
+  });
+  const countryInfo = {
+    code: countryRow.code, name: countryRow.name, nameEn: countryRow.nameEn,
+    currency: countryRow.currency, currencySymbol: countryRow.currencySymbol,
+    currencySymbolEn: countryRow.currencySymbolEn,
+    currencyPosition: countryRow.currencyPosition || 'after'
+  };
   const data = {
-    settings: publicSettings(s),
+    settings: publicSettings(effSettings),
     config: {
-      store: { name: s.siteName, nameAr: s.siteNameAr, logo: s.logo, currency: s.payment.currency, currencySymbol: s.payment.currencySymbol },
+      store: { name: s.siteName, nameAr: s.siteNameAr, logo: s.logo, currency: countryRow.currency, currencySymbol: countryRow.currencySymbol },
       features: s.features, flags: s.flags, locale: s.locale, branding: s.branding
     },
-    paymentMethods: (await all(c.env.DB.prepare('SELECT * FROM payment_methods WHERE isActive=1 AND isVisible=1 ORDER BY sortOrder'))).map((m) => {
-      /* تفكيك config JSON (أرقام الحسابات/المحافظ/QR/الأيقونة) إلى أعلى الكائن
-         حتى تقرأها واجهة الدفع مباشرة — البيانات من D1 حصراً لا من الكود */
-      const cfg = parseJson(m.config, {});
-      return { ...m, ...cfg, _id: m.id, config: cfg };
-    }),
-    governorates: await all(c.env.DB.prepare('SELECT * FROM governorates WHERE isActive=1 ORDER BY sortOrder,name')),
+    country: countryInfo,
+    countries: activeCountries.map((r) => ({
+      code: r.code, name: r.name, nameEn: r.nameEn,
+      currency: r.currency, currencySymbol: r.currencySymbol, currencySymbolEn: r.currencySymbolEn,
+      currencyPosition: r.currencyPosition || 'after', isDefault: Boolean(r.isDefault), _id: r.code
+    })),
+    paymentMethods: filterMethodsForCountry(allMethods, countryRow.code),
+    governorates: await all(c.env.DB.prepare('SELECT * FROM governorates WHERE isActive=1 AND countryCode=? ORDER BY sortOrder,name').bind(countryRow.code)),
     banners: await all(c.env.DB.prepare('SELECT * FROM banners WHERE isActive=1 ORDER BY sortOrder')),
     pages: await all(c.env.DB.prepare("SELECT id,title,titleEn,slug,showInFooter FROM pages WHERE isActive=1 AND status='published' ORDER BY sortOrder,title")),
     sections,
@@ -68,10 +101,23 @@ app.get('/storefront/config', async c => {
   };
   return ok(c, data);
 });
-app.get('/storefront/payment-methods', async c => ok(c,{ paymentMethods:(await all(c.env.DB.prepare('SELECT * FROM payment_methods WHERE isActive=1 AND isVisible=1 ORDER BY sortOrder ASC'))).map(m=>{ const cfg=parseJson(m.config,{}); return {...m,...cfg,_id:m.id,config:cfg}; }) }));
-app.get('/storefront/shipping/quote', async c => { const s=await getSettings(c.env); const code=c.req.query('governorateCode') || c.req.query('governorate') || c.req.query('governorateId'); const rows=await all(c.env.DB.prepare('SELECT * FROM governorates WHERE isActive=1 ORDER BY sortOrder,name')); const governorate=rows.find(g=>g.code===code || g.id===code);
-  if (!governorate) return c.json({status:'error',message:'المحافظة غير متاحة'},400); const cost = governorate?.shippingCost ?? s.shipping.defaultCost; const threshold=s.shipping.freeShippingThreshold; const subtotal=Number(c.req.query('subtotal'))||0; return ok(c,{ cost: s.shipping.freeShippingEnabled && subtotal>=threshold ? 0 : cost, free: subtotal>=threshold, threshold, governorate, estimatedDays:{min:s.shipping.estimatedDaysMin,max:s.shipping.estimatedDaysMax} }); });
-app.get('/storefront/governorates', async c => ok(c,{ governorates: await all(c.env.DB.prepare('SELECT * FROM governorates WHERE isActive=1 ORDER BY sortOrder,name')) }));
+app.get('/storefront/payment-methods', async c => {
+  const methods=(await all(c.env.DB.prepare('SELECT * FROM payment_methods WHERE isActive=1 AND isVisible=1 ORDER BY sortOrder ASC'))).map(m=>{ const cfg=parseJson(m.config,{}); return {...m,...cfg,_id:m.id,config:cfg}; });
+  return ok(c,{ paymentMethods: filterMethodsForCountry(methods, c.get('country')) });
+});
+app.get('/storefront/shipping/quote', async c => {
+  const s=await getSettings(c.env);
+  const countryRow=c.get('countryRow');
+  const ship=shippingForCountry(s.shipping, countryRow);           // قواعد البلد نفسه — بلا أي تحويل عملة
+  const code=c.req.query('governorateCode') || c.req.query('governorate') || c.req.query('governorateId');
+  const rows=await all(c.env.DB.prepare('SELECT * FROM governorates WHERE isActive=1 AND countryCode=? ORDER BY sortOrder,name').bind(countryRow.code));
+  const governorate=rows.find(g=>g.code===code || g.id===code);
+  /* محافظة/إمارة من بلدٍ آخر لا تُقبل إطلاقاً — إعادة استخدام نفس رفض «غير متاحة» */
+  if (!governorate) return c.json({status:'error',message:'المحافظة غير متاحة'},400);
+  const cost = governorate?.shippingCost ?? ship.defaultCost; const threshold=ship.freeShippingThreshold; const subtotal=Number(c.req.query('subtotal'))||0;
+  return ok(c,{ country: countryRow.code, cost: ship.freeShippingEnabled && subtotal>=threshold ? 0 : cost, free: ship.freeShippingEnabled && subtotal>=threshold, threshold, governorate, estimatedDays:{min:ship.estimatedDaysMin,max:ship.estimatedDaysMax} });
+});
+app.get('/storefront/governorates', async c => ok(c,{ country: c.get('country'), governorates: await all(c.env.DB.prepare('SELECT * FROM governorates WHERE isActive=1 AND countryCode=? ORDER BY sortOrder,name').bind(c.get('country'))) }));
 app.get('/storefront/pages', async c => ok(c,{ pages: await all(c.env.DB.prepare("SELECT id,title,titleEn,slug,status,showInFooter FROM pages WHERE isActive=1 AND status='published' ORDER BY sortOrder,title")) }));
 app.get('/storefront/pages/:slug', async c => {
   const page = await first(c.env.DB.prepare('SELECT * FROM pages WHERE slug=? AND isActive=1').bind(c.req.param('slug')));

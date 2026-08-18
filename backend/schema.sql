@@ -27,8 +27,21 @@ CREATE TABLE IF NOT EXISTS users (
   failedLoginAttempts INTEGER NOT NULL DEFAULT 0,
   lockedUntil TEXT,
   adminNotes TEXT NOT NULL DEFAULT '[]',
+  country TEXT,                    -- saved country preference ('EG'|'AE'); NULL = store default (0020)
   createdAt TEXT NOT NULL,
   updatedAt TEXT NOT NULL
+);
+
+-- Multi-country (0020): exactly EG (default, EGP) + AE (AED).
+CREATE TABLE IF NOT EXISTS countries (
+  code TEXT PRIMARY KEY,
+  name TEXT NOT NULL, nameEn TEXT NOT NULL,
+  currency TEXT NOT NULL, currencySymbol TEXT NOT NULL, currencySymbolEn TEXT NOT NULL,
+  currencyPosition TEXT NOT NULL DEFAULT 'after',
+  shipping TEXT NOT NULL DEFAULT '{}',
+  isActive INTEGER NOT NULL DEFAULT 1, isDefault INTEGER NOT NULL DEFAULT 0,
+  sortOrder INTEGER NOT NULL DEFAULT 0,
+  createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS addresses (
@@ -65,6 +78,8 @@ CREATE TABLE IF NOT EXISTS products (
   category TEXT REFERENCES categories(id) ON DELETE SET NULL,
   brand TEXT REFERENCES brands(id) ON DELETE SET NULL,
   price REAL NOT NULL DEFAULT 0, oldPrice REAL, cost REAL NOT NULL DEFAULT 0, discount INTEGER NOT NULL DEFAULT 0,
+  priceAE REAL, oldPriceAE REAL,    -- 0020: independent UAE pricing (NULL = not offered in AE)
+  isActiveAE INTEGER NOT NULL DEFAULT 1,  -- 0020: per-country availability
   stock INTEGER NOT NULL DEFAULT 0, trackInventory INTEGER NOT NULL DEFAULT 1,
   mainImage TEXT, images TEXT NOT NULL DEFAULT '[]',
   variants TEXT NOT NULL DEFAULT '[]', colors TEXT NOT NULL DEFAULT '[]', sizes TEXT NOT NULL DEFAULT '[]', tags TEXT NOT NULL DEFAULT '[]',
@@ -111,8 +126,11 @@ CREATE TABLE IF NOT EXISTS payment_methods (
 
 CREATE TABLE IF NOT EXISTS governorates (
   id TEXT PRIMARY KEY, code TEXT UNIQUE NOT NULL, name TEXT NOT NULL, nameEn TEXT,
-  isActive INTEGER NOT NULL DEFAULT 1, sortOrder INTEGER NOT NULL DEFAULT 0, shippingCost REAL NOT NULL DEFAULT 50, codEnabled INTEGER NOT NULL DEFAULT 1, zoneId TEXT REFERENCES shipping_zones(id) ON DELETE SET NULL, createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL
+  isActive INTEGER NOT NULL DEFAULT 1, sortOrder INTEGER NOT NULL DEFAULT 0, shippingCost REAL NOT NULL DEFAULT 50, codEnabled INTEGER NOT NULL DEFAULT 1, zoneId TEXT REFERENCES shipping_zones(id) ON DELETE SET NULL,
+  countryCode TEXT NOT NULL DEFAULT 'EG',  -- 0020: 'EG' (27 seeded rows) | 'AE' (7 emirates)
+  createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL
 );
+CREATE INDEX IF NOT EXISTS idx_governorates_country ON governorates(countryCode, isActive);
 
 CREATE TABLE IF NOT EXISTS shipping_zones (
   id TEXT PRIMARY KEY, name TEXT NOT NULL, nameEn TEXT, governorateIds TEXT NOT NULL DEFAULT '[]',
@@ -133,6 +151,9 @@ CREATE TABLE IF NOT EXISTS orders (
   shippingCost REAL NOT NULL DEFAULT 0, paymentFee REAL NOT NULL DEFAULT 0, tax REAL NOT NULL DEFAULT 0, total REAL NOT NULL,
   paymentMethod TEXT NOT NULL, paymentMethodRef TEXT, paymentStatus TEXT NOT NULL DEFAULT 'pending', orderStatus TEXT NOT NULL DEFAULT 'pending',
   notes TEXT, trackingNumber TEXT, shippingCompany TEXT, governorate TEXT,
+  countryCode TEXT NOT NULL DEFAULT 'EG',  -- 0020: immutable country snapshot
+  currency TEXT NOT NULL DEFAULT 'EGP',    -- 0020: immutable currency snapshot
+  currencySymbol TEXT NOT NULL DEFAULT 'ج.م', -- 0020
   paymentReference TEXT, paymentProof TEXT, paymentVerification TEXT NOT NULL DEFAULT '{"state":"none","history":[]}',
   financialSnapshot TEXT NOT NULL DEFAULT '{}', statusHistory TEXT NOT NULL DEFAULT '[]',
   activity TEXT NOT NULL DEFAULT '[]', adminNotes TEXT NOT NULL DEFAULT '[]',
@@ -142,6 +163,7 @@ CREATE TABLE IF NOT EXISTS orders (
 CREATE INDEX IF NOT EXISTS idx_orders_user ON orders(userId);
 CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(orderStatus, paymentStatus);
 CREATE INDEX IF NOT EXISTS idx_orders_created ON orders(createdAt);
+CREATE INDEX IF NOT EXISTS idx_orders_country ON orders(countryCode, createdAt);
 
 CREATE TABLE IF NOT EXISTS order_items (
   id TEXT PRIMARY KEY, orderId TEXT NOT NULL REFERENCES orders(id) ON DELETE CASCADE,

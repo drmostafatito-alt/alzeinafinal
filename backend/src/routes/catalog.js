@@ -2,10 +2,42 @@ import { Hono } from 'hono';
 import { all, first, run, buildWhere, paginateQuery } from '../lib/db.js';
 import { ok, created, fail, stringify, parseJson, nowIso, uuid, slugify, round2 } from '../lib/response.js';
 import { protect, admin, optionalAuth } from '../middleware/auth.js';
+import { countryMiddleware } from '../services/country.js';
 
 export const productShape = (p) => ({
   ...p, _id:p.id, images:parseJson(p.images,[]), variants:parseJson(p.variants,[]), colors:parseJson(p.colors,[]), sizes:parseJson(p.sizes,[]), tags:parseJson(p.tags,[]), metaKeywords:parseJson(p.metaKeywords,[]), keywords:parseJson(p.keywords,[])
 });
+
+/* ---------- Multi-Country (المرحلة D) ---------- */
+/** شرط إتاحة المنتج في الإمارات: مفعّل للإمارات + سعر إماراتي صريح. مصر لا يتغير عليها شيء. */
+export const AE_GATE_SQL = 'p.isActiveAE = 1 AND p.priceAE IS NOT NULL';
+const isAE = (country) => String(country || 'EG').toUpperCase() === 'AE';
+
+/**
+ * يعيد تشكيل المنتج لعرضه ببلد محدد. لمصر: يعاد كما هو بايتًا-ببايت.
+ * للإمارات: price ← priceAE و oldPrice ← oldPriceAE (بلا أي تحويل — أرقام صريحة من لوحة الإدارة).
+ * variants: التسعير على مستوى المنتج فقط للإمارات (المقصود بالموافقة) — سعر الخيار
+ * لا يُعتمد للإمارات حتى لا يتسرّب سعر مصري؛ يُعرض بسعر الإمارات للمنتج.
+ */
+export const shapeProductForCountry = (p, country) => {
+  if (!p || !isAE(country)) return p;
+  const out = { ...p, price: p.priceAE, oldPrice: p.oldPriceAE ?? null };
+  if (Array.isArray(out.variants)) out.variants = out.variants.map((v) => (v && typeof v === 'object' ? { ...v, price: p.priceAE } : v));
+  return out;
+};
+
+/** سعر الوحدة الخادمي لطلب/سلة حسب البلد — المرجع الوحيد لحساب الأموال. */
+export function unitPriceForCountry(productRow, variantObj, country) {
+  if (isAE(country)) return Number(productRow.priceAE);
+  return variantObj?.price ?? productRow.price;
+}
+
+/** هل المنتج قابل للبيع في البلد؟ (مصر = السلوك التاريخي؛ الإمارات = البوابة الموافق عليها) */
+export function productAvailableInCountry(productRow, country) {
+  if (!productRow || !productRow.isActive) return false;
+  if (isAE(country)) return Boolean(productRow.isActiveAE) && productRow.priceAE !== null && productRow.priceAE !== undefined;
+  return true;
+}
 
 /** خطأ برسالة ودّية تُعرض للمستخدم (بدل 500 برسالة D1 خام). */
 export class FriendlyError extends Error {
@@ -50,10 +82,14 @@ function guardUnique(e) {
   throw e;
 }
 
-async function listProducts(env, query = {}, adminMode = false) {
+async function listProducts(env, query = {}, adminMode = false, country = 'EG') {
   const { page, limit, offset } = paginateQuery(query, 12, 100);
   const where = []; const vals = [];
   if (!adminMode) where.push('p.isActive = 1');
+  /* الإمارات: بوابة الإتاحة + عمود السعر الإماراتي في الفلاتر/الترتيب. مصر: لا تغيير إطلاقاً. */
+  const ae = isAE(country) && !adminMode;
+  if (ae) where.push(AE_GATE_SQL);
+  const priceCol = ae ? 'p.priceAE' : 'p.price';
   /* بحث نصي: الواجهة ترسل المعامل باسم search (صفحتا Shop وSearch)
      بينما كانت القراءة لـ q فقط — فيُتجاهل البحث بصمت وتظهر كل المنتجات.
      نقرأ الاسمين معاً (الاتفاقان كلاهما مستخدمان في الواجهة). */
@@ -63,30 +99,34 @@ async function listProducts(env, query = {}, adminMode = false) {
   if (query.featured) where.push('p.isFeatured = 1');
   if (query.bestSeller || query.sort === 'bestSeller') where.push('p.isBestSeller = 1');
   if (query.newArrival) where.push('p.isNewArrival = 1');
-  if (query.discount) where.push('p.discount > 0');
+  if (query.discount) where.push(ae ? '(p.oldPriceAE IS NOT NULL AND p.oldPriceAE > p.priceAE)' : 'p.discount > 0');
   if (q) { where.push('(p.name LIKE ? OR p.nameEn LIKE ? OR p.description LIKE ? OR p.tags LIKE ?)'); vals.push(`%${q}%`,`%${q}%`,`%${q}%`,`%${q}%`); }
-  if (query.minPrice) { where.push('p.price >= ?'); vals.push(Number(query.minPrice)); }
-  if (query.maxPrice) { where.push('p.price <= ?'); vals.push(Number(query.maxPrice)); }
+  if (query.minPrice) { where.push(`${priceCol} >= ?`); vals.push(Number(query.minPrice)); }
+  if (query.maxPrice) { where.push(`${priceCol} <= ?`); vals.push(Number(query.maxPrice)); }
   /* فلترا المتجر اللذان كانا يُرسلان من الواجهة ويُتجاهلان هنا */
   if (query.rating) { where.push('p.rating >= ?'); vals.push(Number(query.rating)); }
   if (query.inStock === 'true' || query.inStock === true || query.inStock === '1') where.push('p.stock > 0');
-  const orderMap = { newest:'p.createdAt DESC', price_asc:'p.price ASC', price_desc:'p.price DESC', discount:'p.discount DESC', rating:'p.rating DESC', bestSeller:'p.soldCount DESC', name:'p.name COLLATE NOCASE ASC' };
+  const orderMap = { newest:'p.createdAt DESC', price_asc:`${priceCol} ASC`, price_desc:`${priceCol} DESC`, discount:'p.discount DESC', rating:'p.rating DESC', bestSeller:'p.soldCount DESC', name:'p.name COLLATE NOCASE ASC' };
   const order = orderMap[query.sort] || 'p.createdAt DESC';
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
   const total = (await env.DB.prepare(`SELECT COUNT(*) n FROM products p LEFT JOIN categories c ON c.id=p.category LEFT JOIN brands b ON b.id=p.brand ${whereSql}`).bind(...vals).first()).n;
   const rows = await all(env.DB.prepare(`SELECT p.*, c.name categoryName, c.slug categorySlug, b.name brandName, b.slug brandSlug FROM products p LEFT JOIN categories c ON c.id=p.category LEFT JOIN brands b ON b.id=p.brand ${whereSql} ORDER BY ${order} LIMIT ? OFFSET ?`).bind(...vals, limit, offset));
-  return { products: rows.map(productShape), pagination:{ page, limit, total, pages:Math.max(1,Math.ceil(total/limit)) } };
+  return { products: rows.map((p)=>shapeProductForCountry(productShape(p), adminMode ? 'EG' : country)), pagination:{ page, limit, total, pages:Math.max(1,Math.ceil(total/limit)) } };
 }
 
 const products = new Hono();
-products.get('/', async c => ok(c, await listProducts(c.env, c.req.query())));
-products.get('/featured', async c => ok(c, await listProducts(c.env, { featured:1, limit:c.req.query('limit')||8 })));
-products.get('/best-sellers', async c => ok(c, await listProducts(c.env, { bestSeller:1, sort:'bestSeller', limit:c.req.query('limit')||8 })));
-products.get('/new-arrivals', async c => ok(c, await listProducts(c.env, { newArrival:1, limit:c.req.query('limit')||8 })));
+/* حلّ البلد لكل مسارات الكتالوج العامة — مصر الافتراضي، الإمارات بترويسة X-Country */
+products.use('*', countryMiddleware);
+products.get('/', async c => ok(c, await listProducts(c.env, c.req.query(), false, c.get('country'))));
+products.get('/featured', async c => ok(c, await listProducts(c.env, { featured:1, limit:c.req.query('limit')||8 }, false, c.get('country'))));
+products.get('/best-sellers', async c => ok(c, await listProducts(c.env, { bestSeller:1, sort:'bestSeller', limit:c.req.query('limit')||8 }, false, c.get('country'))));
+products.get('/new-arrivals', async c => ok(c, await listProducts(c.env, { newArrival:1, limit:c.req.query('limit')||8 }, false, c.get('country'))));
 products.get('/search/suggestions', async c => {
   const q = `%${c.req.query('q')||c.req.query('search')||''}%`;
-  const products = await all(c.env.DB.prepare(`SELECT id,name,nameEn,slug,price,mainImage,rating FROM products WHERE isActive=1 AND (name LIKE ? OR nameEn LIKE ?) ORDER BY rating DESC LIMIT 8`).bind(q,q));
-  return ok(c, { suggestions: products.map(p=>({...p,_id:p.id,type:'product'})), products });
+  const country = c.get('country');
+  const ae = isAE(country);
+  const rows = await all(c.env.DB.prepare(`SELECT id,name,nameEn,slug,${ae?'priceAE':'price'} price,mainImage,rating FROM products WHERE isActive=1 AND ${ae ? 'isActiveAE=1 AND priceAE IS NOT NULL AND ' : ''}(name LIKE ? OR nameEn LIKE ?) ORDER BY rating DESC LIMIT 8`).bind(q,q));
+  return ok(c, { suggestions: rows.map(p=>({...p,_id:p.id,type:'product'})), products: rows });
 });
 products.get('/ids', async c => {
   /* منتجات محددة بالمعرّفات — يستخدمها بانى الصفحة لمصدر "اختيار يدوي".
@@ -94,23 +134,30 @@ products.get('/ids', async c => {
   const ids = String(c.req.query('ids') || '').split(',').map(s=>s.trim()).filter(Boolean).slice(0,50);
   if (!ids.length) return ok(c, { products: [] });
   const ph = ids.map(()=>'?').join(',');
-  const rows = await all(c.env.DB.prepare(`SELECT * FROM products WHERE isActive=1 AND id IN (${ph})`).bind(...ids));
+  const country = c.get('country'); const ae = isAE(country);
+  const rows = await all(c.env.DB.prepare(`SELECT * FROM products WHERE isActive=1 ${ae?'AND isActiveAE=1 AND priceAE IS NOT NULL':''} AND id IN (${ph})`).bind(...ids));
   const byId = new Map(rows.map(p=>[p.id,p]));
   const ordered = ids.map(id=>byId.get(id)).filter(Boolean);
-  return ok(c, { products: ordered.map(productShape) });
+  return ok(c, { products: ordered.map((p)=>shapeProductForCountry(productShape(p), country)) });
 });
 products.get('/slug/:slug', optionalAuth, async c => {
   const p = await first(c.env.DB.prepare(`SELECT p.*, c.name categoryName,c.slug categorySlug,b.name brandName,b.slug brandSlug FROM products p LEFT JOIN categories c ON c.id=p.category LEFT JOIN brands b ON b.id=p.brand WHERE p.slug=?`).bind(c.req.param('slug')));
-  if (!p || !p.isActive) return fail(c,'المنتج غير موجود',404);
-  return ok(c,{ product: productShape(p) });
+  const country = c.get('country');
+  /* بوابة البلد: منتجٌ غير مفعّل للإمارات أو بلا سعر إماراتي = غير موجود إطلاقاً هناك */
+  if (!p || !p.isActive || !productAvailableInCountry(p, country)) return fail(c,'المنتج غير موجود',404);
+  return ok(c,{ product: shapeProductForCountry(productShape(p), country) });
 });
 products.get('/:id/related', async c => {
   const p = await first(c.env.DB.prepare('SELECT category,brand FROM products WHERE id=?').bind(c.req.param('id'))); if (!p) return fail(c,'المنتج غير موجود',404);
   const limit = Number(c.req.query('limit'))||8;
-  const rows = await all(c.env.DB.prepare(`SELECT * FROM products WHERE isActive=1 AND id<>? AND (category=? OR brand=?) ORDER BY rating DESC,soldCount DESC LIMIT ?`).bind(c.req.param('id'),p.category,p.brand,limit));
-  return ok(c,{ products: rows.map(productShape) });
+  const country = c.get('country'); const ae = isAE(country);
+  const rows = await all(c.env.DB.prepare(`SELECT * FROM products WHERE isActive=1 ${ae?'AND isActiveAE=1 AND priceAE IS NOT NULL':''} AND id<>? AND (category=? OR brand=?) ORDER BY rating DESC,soldCount DESC LIMIT ?`).bind(c.req.param('id'),p.category,p.brand,limit));
+  return ok(c,{ products: rows.map((x)=>shapeProductForCountry(productShape(x), country)) });
 });
-products.get('/:id', async c => { const p=await first(c.env.DB.prepare('SELECT * FROM products WHERE id=?').bind(c.req.param('id'))); if (!p) return fail(c,'المنتج غير موجود',404); return ok(c,{ product:productShape(p) }); });
+products.get('/:id', async c => { const p=await first(c.env.DB.prepare('SELECT * FROM products WHERE id=?').bind(c.req.param('id'))); const country=c.get('country');
+  /* مصر: نفس السلوك التاريخي تماماً (لا تحقق isActive هنا). الإمارات: بوابة الإتاحة الكاملة. */
+  if (!p || (isAE(country) && !productAvailableInCountry(p, country))) return fail(c,'المنتج غير موجود',404);
+  return ok(c,{ product:shapeProductForCountry(productShape(p), country) }); });
 
 const normalizeProductInput = (body, old = {}) => {
   const now = nowIso(); const row = { ...old };
@@ -124,7 +171,10 @@ const normalizeProductInput = (body, old = {}) => {
     if ((k === 'category' || k === 'brand') && body[k] === '') { row[k] = null; continue; }
     row[k] = body[k];
   }
-  for (const k of ['price','oldPrice','cost','rating','soldCount','stock','discount','isFeatured','isBestSeller','isNewArrival','isActive','trackInventory']) if (body[k] !== undefined) row[k] = ['isFeatured','isBestSeller','isNewArrival','isActive','trackInventory'].includes(k) ? (body[k]?1:0) : body[k];
+  for (const k of ['price','oldPrice','cost','rating','soldCount','stock','discount','isFeatured','isBestSeller','isNewArrival','isActive','isActiveAE','trackInventory']) if (body[k] !== undefined) row[k] = ['isFeatured','isBestSeller','isNewArrival','isActive','isActiveAE','trackInventory'].includes(k) ? (body[k]?1:0) : body[k];
+  /* تسعير الإمارات (المرحلة D/K): قيم REAL قابلة للفراغ — '' تعني «بلا سعر إماراتي» ⇒ NULL
+     ولا يتحوّل أي سعر مصري إلى إماراتي آلياً أبداً؛ الإدمن يكتب الأرقام صراحةً. */
+  for (const k of ['priceAE','oldPriceAE']) if (body[k] !== undefined) row[k] = (body[k] === '' || body[k] === null) ? null : Number(body[k]);
   for (const k of ['images','variants','colors','sizes','tags','metaKeywords']) if (body[k] !== undefined) row[k] = stringify(body[k] || []);
   if (!row.slug && (row.nameEn||row.name)) row.slug = slugify(row.nameEn || row.name);
   if (!row.sku) row.sku = `${(row.nameEn||row.name||'SKU').replace(/[^A-Za-z0-9]+/g,'').slice(0,6) || 'SKU'}-${Date.now().toString(36).toUpperCase()}`;
@@ -159,8 +209,10 @@ async function saveProduct(env, body, id) {
 export { saveProduct, listProducts, normalizeProductInput };
 
 const categories = new Hono();
+/* التصنيفات نفسها عالمية (كتالوج واحد) لكن قائمة منتجات التصنيف تتبع البلد */
+categories.use('*', countryMiddleware);
 categories.get('/', async c => ok(c,{ categories: (await all(c.env.DB.prepare('SELECT * FROM categories ORDER BY sortOrder ASC, name ASC'))).map(r=>({...r,_id:r.id,keywords:parseJson(r.keywords,[])})) }));
-categories.get('/:slug', async c => { const cat=await first(c.env.DB.prepare('SELECT * FROM categories WHERE slug=?').bind(c.req.param('slug'))); if (!cat) return fail(c,'القسم غير موجود',404); return ok(c,{ category:{...cat,_id:cat.id,keywords:parseJson(cat.keywords,[])}, products:(await listProducts(c.env,{category:cat.id,limit:20})).products }); });
+categories.get('/:slug', async c => { const cat=await first(c.env.DB.prepare('SELECT * FROM categories WHERE slug=?').bind(c.req.param('slug'))); if (!cat) return fail(c,'القسم غير موجود',404); return ok(c,{ category:{...cat,_id:cat.id,keywords:parseJson(cat.keywords,[])}, products:(await listProducts(c.env,{category:cat.id,limit:20}, false, c.get('country'))).products }); });
 const brands = new Hono();
 brands.get('/', async c => ok(c,{ brands: (await all(c.env.DB.prepare('SELECT * FROM brands WHERE isActive=1 ORDER BY sortOrder ASC, name ASC'))).map(b=>({...b,_id:b.id,keywords:parseJson(b.keywords,[])})) }));
 brands.get('/:slug', async c => { const b=await first(c.env.DB.prepare('SELECT * FROM brands WHERE slug=?').bind(c.req.param('slug'))); if (!b) return fail(c,'الماركة غير موجودة',404); return ok(c,{ brand:{...b,_id:b.id,keywords:parseJson(b.keywords,[])} }); });

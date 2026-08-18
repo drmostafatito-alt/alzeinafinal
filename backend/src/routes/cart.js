@@ -4,6 +4,8 @@ import { first, all } from '../lib/db.js';
 import { ok, parseJson, stringify, round2 } from '../lib/response.js';
 import { couponDiscount, couponValid } from '../services/pricing.js';
 import { optionalAuth } from '../middleware/auth.js';
+import { countryMiddleware } from '../services/country.js';
+import { productAvailableInCountry, unitPriceForCountry } from './catalog.js';
 
 const CART_COOKIE = 'alzeina_cart';
 
@@ -21,17 +23,24 @@ function totals(cart) {
 
 const app = new Hono();
 app.use('*', optionalAuth);
+/* المرحلة D: البلد يُحسم خادمياً لكل قراءات/كتابات السلة — أسعار البلد هي المرجع */
+app.use('*', countryMiddleware);
 app.get('/', async c => {
   let cart = readCart(c);
+  const country = c.get('country');
   const ids = cart.items.map(i=>i.productId);
   const products = ids.length ? await all(c.env.DB.prepare(`SELECT * FROM products WHERE id IN (${ids.map(()=>'?').join(',')}) AND isActive=1`).bind(...ids)) : [];
-  cart.items = cart.items.map(i=>{ const p=products.find(x=>x.id===i.productId); if (!p) return null; const v=parseJson(p.variants,[]).find(v=>v.sku===i.variantSku || v.sku===i.variant); return { ...i, name: p.name, nameEn:p.nameEn, image:p.mainImage, price:v?.price ?? p.price, oldPrice:p.oldPrice, discount:p.discount, inStock:p.stock>=i.quantity, stock:p.stock }; }).filter(Boolean);
-  totals(cart); writeCart(c, cart); return ok(c,{ cart });
+  /* أي منتج غير متاح في هذا البلد يُحذف من السلة؛ الأسعار تُعاد كتابتها من D1 دائماً
+     — لا يبقى سعر مصري في سلة إماراتية ولا العكس. */
+  cart.items = cart.items.map(i=>{ const p=products.find(x=>x.id===i.productId); if (!p || !productAvailableInCountry(p, country)) return null; const v=parseJson(p.variants,[]).find(v=>v.sku===i.variantSku || v.sku===i.variant); return { ...i, name: p.name, nameEn:p.nameEn, image:p.mainImage, price:unitPriceForCountry(p, v, country), oldPrice:String(country).toUpperCase()==='AE' ? (p.oldPriceAE ?? null) : p.oldPrice, discount:p.discount, inStock:p.stock>=i.quantity, stock:p.stock }; }).filter(Boolean);
+  totals(cart); writeCart(c, cart); return ok(c,{ country, cart });
 });
 app.post('/add', async c => {
   const { productId, quantity=1, variant=null } = await c.req.json();
-  const p = await first(c.env.DB.prepare('SELECT * FROM products WHERE id=?').bind(productId)); if (!p?.isActive) return c.json({status:'error',message:'المنتج غير موجود'},404);
-  const variants=parseJson(p.variants,[]); const v=variant?variants.find(x=>x.sku===variant||x.name===variant):null; const price=v?.price??p.price; const stock=v?.stock??p.stock; if (stock<quantity) return c.json({status:'error',message:'الكمية غير متوفرة'},400);
+  const country = c.get('country');
+  const p = await first(c.env.DB.prepare('SELECT * FROM products WHERE id=?').bind(productId));
+  if (!p?.isActive || !productAvailableInCountry(p, country)) return c.json({status:'error',message:'المنتج غير موجود'},404);
+  const variants=parseJson(p.variants,[]); const v=variant?variants.find(x=>x.sku===variant||x.name===variant):null; const price=unitPriceForCountry(p, v, country); const stock=v?.stock??p.stock; if (stock<quantity) return c.json({status:'error',message:'الكمية غير متوفرة'},400);
   const cart=readCart(c); const existing=cart.items.find(i=>i.productId===productId && i.variantSku===(v?.sku||null));
   if (existing) { if (stock<existing.quantity+quantity) return c.json({status:'error',message:'الكمية غير متوفرة'},400); existing.quantity+=quantity; } else cart.items.push({ productId, name:p.name, price, quantity, variant:v?.name||null, variantSku:v?.sku||null, image:p.mainImage, sku:v?.sku||p.sku });
   totals(cart); writeCart(c, cart); return ok(c,{ cart },'تمت إضافة المنتج إلى السلة');

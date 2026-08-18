@@ -1,15 +1,33 @@
 import { first, all } from '../lib/db.js';
 import { parseJson, round2 } from '../lib/response.js';
+import { shippingForCountry } from './country.js';
 
-export async function calculateShipping(env, settings, { governorateCode, governorateId, subtotal }) {
+/**
+ * حساب الشحن — المرحلة D: البلد يُمرَّر صراحة (country = الكود، countryRow = صف D1).
+ * المحافظة/الإمارة تُطابَق داخل بلدها فقط، فلا تتسرب إمارة إماراتية إلى طلب مصري
+ * ولا محافظة مصرية إلى طلب إماراتي. قواعد الشحن تأتي من إعدادات المتجر مدمجةً
+ * مع تجاوزات البلد (countries.shipping) — كل بلد بأرقامه الصريحة، بلا تحويل عملة.
+ * عند إغفال البلد (نداءات قديمة) يُستخدم سلوك مصر التاريخي حرفياً.
+ */
+export async function calculateShipping(env, settings, { governorateCode, governorateId, subtotal, country, countryRow }) {
   const amount = Number(subtotal) || 0;
-  let governorate = governorateId ? await first(env.DB.prepare('SELECT * FROM governorates WHERE id=?').bind(governorateId)) : governorateCode ? await first(env.DB.prepare('SELECT * FROM governorates WHERE code=?').bind(governorateCode)) : null;
+  const ship = countryRow ? shippingForCountry(settings.shipping, countryRow) : (settings.shipping || {});
+  let governorate = null;
+  if (governorateId || governorateCode) {
+    if (country) {
+      governorate = governorateId
+        ? await first(env.DB.prepare('SELECT * FROM governorates WHERE id=? AND countryCode=?').bind(governorateId, country))
+        : await first(env.DB.prepare('SELECT * FROM governorates WHERE code=? AND countryCode=?').bind(governorateCode, country));
+    } else {
+      governorate = governorateId ? await first(env.DB.prepare('SELECT * FROM governorates WHERE id=?').bind(governorateId)) : await first(env.DB.prepare('SELECT * FROM governorates WHERE code=?').bind(governorateCode));
+    }
+  }
   // الشحن المجاني يجب ألا يُسقط بيانات المحافظة — كان الإرجاع المبكر بـ governorate:null
   // يجعل orders.js يرفض أي طلب فوق حد الشحن المجاني برسالة "المحافظة المختارة غير متاحة".
-  if (settings.shipping?.freeShippingEnabled && settings.shipping.freeShippingThreshold && amount >= settings.shipping.freeShippingThreshold) {
-    return { cost: 0, free:true, governorate, estimate:{min:settings.shipping?.estimatedDaysMin||2,max:settings.shipping?.estimatedDaysMax||5} };
+  if (ship.freeShippingEnabled && ship.freeShippingThreshold && amount >= ship.freeShippingThreshold) {
+    return { cost: 0, free:true, governorate, estimate:{min:ship.estimatedDaysMin||2,max:ship.estimatedDaysMax||5} };
   }
-  let cost = settings.shipping?.defaultCost || 0; let estimate = { min:settings.shipping?.estimatedDaysMin||2, max:settings.shipping?.estimatedDaysMax||5 };
+  let cost = ship.defaultCost || 0; let estimate = { min:ship.estimatedDaysMin||2, max:ship.estimatedDaysMax||5 };
   if (governorate && typeof governorate.shippingCost === 'number') cost = governorate.shippingCost;
   if (governorate && governorate.zoneId) { const z=await first(env.DB.prepare('SELECT * FROM shipping_zones WHERE id=? AND isActive=1').bind(governorate.zoneId)); if (z) { cost=z.cost; if (z.freeThreshold && amount>=z.freeThreshold) cost=0; if (z.estimatedDaysMin) estimate={min:z.estimatedDaysMin,max:z.estimatedDaysMax}; } }
   const zones = await all(env.DB.prepare('SELECT * FROM shipping_zones WHERE isActive=1'));

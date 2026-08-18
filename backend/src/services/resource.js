@@ -17,7 +17,8 @@ export const RESOURCES = {
   'instagram-posts': { table:'instagram_posts', search:['caption'], defaults:{ isActive:1, sortOrder:0 } },
   'return-reasons': { table:'return_reasons', search:['name','nameEn'], defaults:{ isActive:1, sortOrder:0 } },
   'theme-presets': { table:'theme_presets', search:['name','description'], defaults:{ isActive:0, sortOrder:0, theme:{} } },
-  'email-templates': { table:'email_templates', search:['name','key','subject'], defaults:{ isActive:1, variables:[] } }
+  'email-templates': { table:'email_templates', search:['name','key','subject'], defaults:{ isActive:1, variables:[] } },
+  countries: { table:'countries', search:['name','nameEn','code'], defaults:{ isActive:1, isDefault:0, sortOrder:0, shipping:'{}' } }
 };
 
 /**
@@ -43,14 +44,20 @@ export const TABLE_COLUMNS = {
   'instagram-posts': ['id','image','caption','link','isActive','sortOrder','createdAt','updatedAt'],
   'return-reasons': ['id','name','nameEn','isActive','sortOrder','createdAt','updatedAt'],
   'theme-presets': ['id','name','nameEn','description','slug','theme','isActive','sortOrder','createdAt','updatedAt'],
-  'email-templates': ['id','key','name','subject','body','isActive','variables','sortOrder','createdAt','updatedAt']
+  'email-templates': ['id','key','name','subject','body','isActive','variables','sortOrder','createdAt','updatedAt'],
+  /* البلدان: بلا عمود id — المفتاح الأساسي هو code */
+  countries: ['code','name','nameEn','currency','currencySymbol','currencySymbolEn','currencyPosition','shipping','isActive','isDefault','sortOrder','createdAt','updatedAt']
 };
+
+/** عمود المفتاح الأساسي لكل مورد — countries يُعرَّف بـ code لا id */
+const pkCol = (resource) => (TABLE_COLUMNS[resource]?.includes('id') ? 'id' : 'code');
 
 /** أعمدة JSON تُحفظ كسلسلة نصية */
 const JSON_COLUMNS = {
   categories:['keywords'], brands:['keywords'], 'shipping-zones':['governorateIds'], 'payment-methods':['config'],
   pages:['data'], 'home-sections':['data'], popups:['data'], 'flash-sales':['products','data'],
-  'theme-presets':['theme'], 'email-templates':['variables'], 'shipping-companies':['config'], banners:[]
+  'theme-presets':['theme'], 'email-templates':['variables'], 'shipping-companies':['config'], banners:[],
+  countries:['shipping']
 };
 
 /** الحقول الحرة (غير الموجودة كأعمدة) تُحفظ داخل data بدل رفضها */
@@ -97,7 +104,7 @@ const normalize = (resource, payload, existing = {}) => {
     if (['id', '_id', 'createdAt', 'updatedAt'].includes(k)) continue;
     if (v === undefined || v === null) continue;
     if (columns.includes(k)) {
-      if (['isActive','isVisible','freeShipping','requiresProof','requiresReference','codEnabled','showInFooter'].includes(k)) out[k] = bool(v) ? 1 : 0;
+      if (['isActive','isVisible','freeShipping','requiresProof','requiresReference','codEnabled','showInFooter','isDefault'].includes(k)) out[k] = bool(v) ? 1 : 0;
       else if (JSON_COLUMNS[resource]?.includes(k)) out[k] = typeof v === 'string' ? v : stringify(v);
       else if (['shippingCost','feeValue','cost','freeThreshold','estimatedDaysMin','estimatedDaysMax','sortOrder'].includes(k)) out[k] = Number(v) || 0;
       else out[k] = v;
@@ -122,7 +129,18 @@ const normalize = (resource, payload, existing = {}) => {
     out.slug = slugify(out.slug || out.titleEn || out.title || '');
   }
   if (resource === 'governorates' && !out.code) out.code = String(out.nameEn||out.name||'').toUpperCase().replace(/\s+/g,'-').slice(0,20) || uuid();
+  if (resource === 'governorates' && !out.countryCode) out.countryCode = 'EG';
   if (resource === 'shipping-zones' && !out.governorateIds) out.governorateIds = '[]';
+  /* البلدان: تحققات صارمة للكود والعملة — جدول حرج للمتجر كله */
+  if (resource === 'countries') {
+    out.code = String(out.code || '').trim().toUpperCase();
+    if (!/^[A-Z]{2}$/.test(out.code)) throw Object.assign(new Error('كود البلد يجب أن يكون حرفين لاتينيين كبيرين (مثال: EG)'), { status: 400, friendly: true });
+    out.currency = String(out.currency || '').trim().toUpperCase();
+    if (!/^[A-Z]{3}$/.test(out.currency)) throw Object.assign(new Error('كود العملة يجب أن يكون ثلاثة أحرف (مثال: EGP أو AED)'), { status: 400, friendly: true });
+    if (!out.name || !out.nameEn) throw Object.assign(new Error('اسم البلد بالعربية والإنجليزية مطلوب'), { status: 400, friendly: true });
+    if (out.currencyPosition && !['after','before'].includes(out.currencyPosition)) out.currencyPosition = 'after';
+    if (!out.shipping || typeof out.shipping !== 'string') out.shipping = stringify(out.shipping || {});
+  }
 
   /* الحقول الحرة تُحفظ في عمود JSON الحر الخاص بالمورد
      (config لطرق الدفع وشركات الشحن، data لغيرهما) */
@@ -152,7 +170,12 @@ export async function listResource(env, resource, query = {}) {
   return { items: items.map(parseStoredData), [resource]: items.map(parseStoredData), page, limit, total, pages: Math.max(1, Math.ceil(total/limit)) };
 }
 
-export async function getResource(env, resource, id) { return parseStoredData(await first(env.DB.prepare(`SELECT * FROM ${RESOURCES[resource].table} WHERE id=?`).bind(id))); }
+/** بعد كتابة دولة افتراضية: بلد افتراضي واحد فقط في النظام كله. */
+async function enforceSingleDefault(env, row) {
+  if (Number(row?.isDefault) === 1) await run(env.DB.prepare('UPDATE countries SET isDefault=0 WHERE code<>?').bind(row.code));
+}
+
+export async function getResource(env, resource, id) { return parseStoredData(await first(env.DB.prepare(`SELECT * FROM ${RESOURCES[resource].table} WHERE ${pkCol(resource)}=?`).bind(id))); }
 /** يحوّل أخطاء UNIQUE من رسالة D1 خام إلى خطأ ودّي (409) للمستخدم. */
 const guardUnique = (e) => {
   const m = String(e?.message || '').match(/UNIQUE constraint failed: (\w+)\.(\w+)/);
@@ -162,34 +185,41 @@ const guardUnique = (e) => {
 
 export async function createResource(env, resource, payload) {
   const def = RESOURCES[resource]; const row = normalize(resource, { ...def.defaults, ...payload });
-  row.id = uuid();
+  const pk = pkCol(resource);
+  if (pk === 'id') row.id = uuid();
   row.createdAt = nowIso(); row.updatedAt = row.createdAt;
   const cols = Object.keys(row).filter(c => TABLE_COLUMNS[resource]?.includes(c));
   const vals = cols.map(c=>row[c]);
   try {
     await run(env.DB.prepare(`INSERT INTO ${def.table} (${cols.join(',')}) VALUES (${cols.map(()=>'?').join(',')})`).bind(...vals));
   } catch (e) { guardUnique(e); }
-  return getResource(env, resource, row.id);
+  if (resource === 'countries') await enforceSingleDefault(env, row);
+  return getResource(env, resource, row[pk]);
 }
 export async function updateResource(env, resource, id, payload) {
-  const old = await first(env.DB.prepare(`SELECT * FROM ${RESOURCES[resource].table} WHERE id=?`).bind(id));
+  const pk = pkCol(resource);
+  const old = await first(env.DB.prepare(`SELECT * FROM ${RESOURCES[resource].table} WHERE ${pk}=?`).bind(id));
   if (!old) return null;
   const row = normalize(resource, payload, old); row.updatedAt = nowIso();
-  const cols = Object.keys(row).filter(c => TABLE_COLUMNS[resource]?.includes(c) && c !== 'id');
+  const cols = Object.keys(row).filter(c => TABLE_COLUMNS[resource]?.includes(c) && c !== pk && c !== 'id');
   try {
-    await run(env.DB.prepare(`UPDATE ${defTable(resource)} SET ${cols.map(c=>`${c}=?`).join(',')} WHERE id=?`).bind(...cols.map(c=>row[c]), id));
+    await run(env.DB.prepare(`UPDATE ${defTable(resource)} SET ${cols.map(c=>`${c}=?`).join(',')} WHERE ${pk}=?`).bind(...cols.map(c=>row[c]), id));
   } catch (e) { guardUnique(e); }
+  if (resource === 'countries') await enforceSingleDefault(env, { ...row, code: id });
   return getResource(env, resource, id);
 }
-export async function deleteResource(env, resource, id) { await run(env.DB.prepare(`DELETE FROM ${defTable(resource)} WHERE id=?`).bind(id)); return true; }
+export async function deleteResource(env, resource, id) { await run(env.DB.prepare(`DELETE FROM ${defTable(resource)} WHERE ${pkCol(resource)}=?`).bind(id)); return true; }
 const defTable = (r) => RESOURCES[r].table;
 export async function reorderResource(env, resource, items = []) {
-  const now = nowIso(); const stmts = items.map((it,i)=>env.DB.prepare(`UPDATE ${defTable(resource)} SET sortOrder=?, updatedAt=? WHERE id=?`).bind(Number(i), now, it.id || it._id));
+  const pk = pkCol(resource);
+  const now = nowIso(); const stmts = items.map((it,i)=>env.DB.prepare(`UPDATE ${defTable(resource)} SET sortOrder=?, updatedAt=? WHERE ${pk}=?`).bind(Number(i), now, it.id || it._id || it.code));
   if (stmts.length) await env.DB.batch(stmts); return true;
 }
 export async function toggleResource(env, resource, id, field) {
+  const pk = pkCol(resource);
   const old = await getResource(env, resource, id); if (!old) return null;
   const next = old[field] ? 0 : 1;
-  await run(env.DB.prepare(`UPDATE ${defTable(resource)} SET ${field}=?, updatedAt=? WHERE id=?`).bind(next, nowIso(), id));
+  await run(env.DB.prepare(`UPDATE ${defTable(resource)} SET ${field}=?, updatedAt=? WHERE ${pk}=?`).bind(next, nowIso(), id));
+  if (resource === 'countries' && field === 'isDefault' && next === 1) await enforceSingleDefault(env, { code: id, isDefault: 1 });
   return getResource(env, resource, id);
 }

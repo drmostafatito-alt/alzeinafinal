@@ -64,6 +64,11 @@ app.get('/api/v1/csrf-token', (c) => {
   }
   return c.json({ status:'success', data:{ csrfToken:token } });
 });
+/* Multi-Country (المرحلة D) — وسيط البلد الوحيد countryMiddleware (src/services/country.js)
+   مُركَّب داخل الموجّهات العامة المعتمدة على البلد حصراً: products/categories (catalog.js)،
+   storefront/* (content.js)، cart (cart.js)، orders (routes/orders.js).
+   تركيبه داخل الموجّهات — لا عالمياً هنا — مقصود: يمنع أي تسرّب إلى auth/admin/uploads/csrf
+   ويبقى resolveCountry(c) المرجع الوحيد للحسم (X-Country ← ?country ← users.country ← الافتراضي). */
 app.route('/api/v1/auth', auth);
 app.route('/api/v1/products', products);
 app.route('/api/v1/categories', categories);

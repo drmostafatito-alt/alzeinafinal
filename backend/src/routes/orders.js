@@ -4,11 +4,14 @@ import { created, fail, nowIso, parseJson, round2, stringify, uuid } from '../li
 import { optionalAuth, protect } from '../middleware/auth.js';
 import { calculateShipping, calculatePaymentFee, calculateTax, couponValid, couponDiscount, couponApplies } from '../services/pricing.js';
 import { getSettings } from '../services/settings.js';
-import { productShape } from './catalog.js';
+import { countryMiddleware, methodAvailableInCountry, shippingForCountry } from '../services/country.js';
+import { productShape, productAvailableInCountry, unitPriceForCountry } from './catalog.js';
 import { qrSvgDataUri } from '../utils/qr.js';
 import { recordReceipt, notifyAdmins, auditLog } from '../services/paymentVerification.js';
 
 const app = new Hono();
+/* المرحلة D/J: البلد يُحسم خادمياً قبل أي حساب أموال — لا ثقة بأي بلد/عملة من العميل */
+app.use('*', countryMiddleware);
 
 const orderNumber = async (env) => {
   /* إصلاح جذري: كان الرقم يُحسب بـ COUNT(*) — بعد حذف أي طلبات من اليوم
@@ -38,6 +41,10 @@ async function serializeOrder(env, row, includeItems = true) {
 app.post('/', optionalAuth, async c => {
   const body = await c.req.json().catch(()=>({}));
   const settings = await getSettings(c.env);
+  /* البلد النهائي — من resolveCountry فقط. أي country/currency في جسم الطلب يُتجاهل تماماً. */
+  const country = c.get('country');
+  const countryRow = c.get('countryRow');
+  const shipRules = shippingForCountry(settings.shipping, countryRow);
   if (!c.get('user') && settings.features?.guestCheckout === false) return fail(c,'يرجى تسجيل الدخول لإتمام الطلب',401);
   if (!body.shippingAddress || !body.paymentMethod || !Array.isArray(body.items) || !body.items.length) return fail(c,'بيانات الطلب غير مكتملة',400);
   if (!body.governorateCode && !body.governorateId) return fail(c,'يجب اختيار المحافظة',400);
@@ -46,6 +53,9 @@ app.post('/', optionalAuth, async c => {
   if (!addr?.phone || !addr?.street || !addr?.city) return fail(c,'عنوان الشحن غير مكتمل',400);
   const method = await first(c.env.DB.prepare('SELECT * FROM payment_methods WHERE code=? AND isActive=1 AND isVisible=1').bind(String(body.paymentMethod).toLowerCase()));
   if (!method) return fail(c,'طريقة الدفع غير متاحة حالياً',400);
+  /* وسيلة الدفع يجب أن تكون متاحة في هذا البلد (config.countries داخل D1).
+     هجوم X-Country:AE + instapay يُرفض هنا — إخفاء الواجهة وحده لا يكفي أبداً. */
+  if (!methodAvailableInCountry(method, country)) return fail(c,'طريقة الدفع غير متاحة لهذا البلد',400);
   const proof = String(body.paymentProof||'').trim(), reference = String(body.paymentReference||'').trim();
   if (method.requiresProof && !proof) return fail(c,`يجب رفع صورة إيصال التحويل لإتمام الدفع عبر ${method.name}`,400);
   if (method.requiresReference && !reference) return fail(c,`رقم عملية التحويل مطلوب للدفع عبر ${method.name}`,400);
@@ -56,24 +66,28 @@ app.post('/', optionalAuth, async c => {
   let subtotal=0, frozenCost=0, costComplete=true; const itemRows=[];
   for (const it of body.items) {
     const p = byId.get(it.productId); if (!p || !p.isActive) return fail(c,`المنتج ${it.productId} غير موجود`,400);
+    /* إتاحة المنتج في البلد المطلوب — منتج بلا سعر إماراتي صريح لا يُباع في الإمارات أبداً */
+    if (!productAvailableInCountry(p, country)) return fail(c,`المنتج ${p.name} غير متوفر في بلدك`,400);
     const variants = parseJson(p.variants,[]); const v = it.variant ? variants.find(x=>x.sku===it.variant || x.name===it.variant) : null;
-    const price = v?.price ?? p.price;
+    const price = unitPriceForCountry(p, v, country);
+    const oldPriceItem = country==='AE' ? (p.oldPriceAE ?? null) : p.oldPrice;
     // الكمية يجب أن تكون عدداً صحيحاً موجباً — كمية سالبة/صفرية كانت تسمح بطلب بإجمالي سالب وزيادة المخزون.
     const qty = Math.trunc(Number(it.quantity));
     if (!Number.isFinite(qty) || qty < 1 || qty > 1000) return fail(c,'كمية غير صالحة',400);
     if (p.stock < qty) return fail(c,`المنتج ${p.name} غير متوفر بالكمية المطلوبة`,400);
     const total = round2(price*qty); subtotal += total; frozenCost += (p.cost||0)*qty; if (!p.cost) costComplete=false;
     if (p.stock < qty) return fail(c,`المنتج ${p.name} غير متوفر بالكمية المطلوبة. المتاح: ${p.stock}`,400);
-    itemRows.push({ id:uuid(), orderId, productId:p.id, variant:v?.name||it.variant||null, name:v?`${p.name} - ${v.name}`:p.name, sku:v?.sku||it.variant||p.sku, quantity:qty, price, oldPrice:p.oldPrice, discount:p.discount, total, image:p.mainImage, cost:p.cost||0, currency:settings.payment?.currency||'EGP', currencySymbol:settings.payment?.currencySymbol||'', categoryName:p.categoryName||'', brandName:p.brandName||'', createdAt:now, updatedAt:now });
+    itemRows.push({ id:uuid(), orderId, productId:p.id, variant:v?.name||it.variant||null, name:v?`${p.name} - ${v.name}`:p.name, sku:v?.sku||it.variant||p.sku, quantity:qty, price, oldPrice:oldPriceItem, discount:p.discount, total, image:p.mainImage, cost:p.cost||0, currency:countryRow.currency, currencySymbol:countryRow.currencySymbol, categoryName:p.categoryName||'', brandName:p.brandName||'', createdAt:now, updatedAt:now });
   }
   let coupon = body.couponCode || body.coupon ? await first(c.env.DB.prepare('SELECT * FROM coupons WHERE code=? OR id=?').bind(String(body.couponCode||'').toUpperCase(), body.coupon || '')) : null;
   if (coupon && !(await couponValid(c.env, coupon, c.get('user')?.id))) coupon = null;
   const couponDisc = coupon ? couponDiscount(coupon, subtotal) : 0;
-  const quote = await calculateShipping(c.env, settings, { governorateCode:body.governorateCode, governorateId:body.governorateId, subtotal: subtotal-couponDisc });
+  /* الشحن: المحافظة/الإمارة تُطابَق داخل البلد المحسوم، وقواعد الشحن من إعداداته هو */
+  const quote = await calculateShipping(c.env, settings, { governorateCode:body.governorateCode, governorateId:body.governorateId, subtotal: subtotal-couponDisc, country, countryRow });
   if (!quote.governorate || !quote.governorate.isActive) return fail(c,'المحافظة المختارة غير متاحة',400);
-  // الدفع عند الاستلام: يجب احترام إيقافه عاماً (settings) أو على مستوى المحافظة (codEnabled).
+  // الدفع عند الاستلام: يجب احترام إيقافه عاماً (قواعد البلد المدمجة) أو على مستوى المحافظة (codEnabled).
   if (String(body.paymentMethod).toLowerCase() === 'cod') {
-    if (settings.shipping?.codEnabled === false) return fail(c,'الدفع عند الاستلام غير متاح حالياً',400);
+    if (shipRules.codEnabled === false) return fail(c,'الدفع عند الاستلام غير متاح حالياً',400);
     if (quote.governorate.codEnabled === false || quote.governorate.codEnabled === 0) return fail(c,'الدفع عند الاستلام غير متاح لهذه المحافظة',400);
   }
   addr.governorateId=quote.governorate.id; addr.governorateName = rawAddr?.language === 'en' ? quote.governorate.nameEn : quote.governorate.name;
@@ -84,8 +98,9 @@ app.post('/', optionalAuth, async c => {
   const total = round2(subtotal-couponDisc+quote.cost+pay.fee+tax);
   const needsVerify = Boolean(method.requiresProof || method.requiresReference);
   const statusHistory = [{ status: needsVerify ? 'awaiting-payment':'pending', at:now }];
-  const fin = { currency:settings.payment?.currency||'EGP', currencySymbol:settings.payment?.currencySymbol||'', taxRate:Number(settings.payment?.taxRate)||0, taxIncluded:settings.payment?.taxIncluded!==false, taxName:settings.payment?.taxName||'', taxNameEn:settings.payment?.taxNameEn||'', totalCost:round2(frozenCost), grossProfit:round2(Math.max(0,total-quote.cost-tax-frozenCost)), costComplete, shippingCost:quote.cost, discountTotal:couponDisc, governorate:{id:quote.governorate.id,code:quote.governorate.code,name:quote.governorate.name,nameEn:quote.governorate.nameEn}, capturedAt:now };
-  const orderData = { id:orderId, orderNumber: await orderNumber(c.env), userId:c.get('user')?.id||null, guestEmail:body.email||body.guestEmail||c.get('user')?.email||null, guestPhone:body.guestPhone||body.shippingAddress?.phone||null, shippingAddress:stringify(addr), subtotal, discount:0, couponId:coupon?.id||null, couponDiscount:couponDisc, shippingCost:quote.cost, paymentFee:pay.fee, tax, total, paymentMethod:body.paymentMethod, paymentMethodRef:pay.method?.id||method.id, paymentStatus:needsVerify?'awaiting-verification':'pending', orderStatus:needsVerify?'awaiting-payment':'pending', notes:body.notes||'', governorate:quote.governorate?.id||null, paymentReference:reference||null, paymentProof:proof||null, paymentVerification:stringify(needsVerify?{state:'pending',history:[{proof,reference,at:now,state:'pending'}]}:{state:'none',history:[]}), financialSnapshot:stringify(fin), statusHistory:stringify(statusHistory), activity:stringify([{type:'created',at:now,by:c.get('user')?.id||'guest'}]), adminNotes:'[]', estimatedDeliveryFrom:quote.estimate?new Date(Date.now()+quote.estimate.min*86400000).toISOString():null, estimatedDeliveryTo:quote.estimate?new Date(Date.now()+quote.estimate.max*86400000).toISOString():null, createdAt:now, updatedAt:now };
+  /* اللقطة المالية الدائمة: البلد والعملة من صف countries في D1 — لا تأثير لأي تغيير مستقبلي على الطلبات */
+  const fin = { country:country, countryName:countryRow.name, countryNameEn:countryRow.nameEn, currency:countryRow.currency, currencySymbol:countryRow.currencySymbol, currencySymbolEn:countryRow.currencySymbolEn, currencyPosition:countryRow.currencyPosition||'after', taxRate:Number(settings.payment?.taxRate)||0, taxIncluded:settings.payment?.taxIncluded!==false, taxName:settings.payment?.taxName||'', taxNameEn:settings.payment?.taxNameEn||'', totalCost:round2(frozenCost), grossProfit:round2(Math.max(0,total-quote.cost-tax-frozenCost)), costComplete, shippingCost:quote.cost, discountTotal:couponDisc, governorate:{id:quote.governorate.id,code:quote.governorate.code,name:quote.governorate.name,nameEn:quote.governorate.nameEn}, capturedAt:now };
+  const orderData = { id:orderId, orderNumber: await orderNumber(c.env), userId:c.get('user')?.id||null, guestEmail:body.email||body.guestEmail||c.get('user')?.email||null, guestPhone:body.guestPhone||body.shippingAddress?.phone||null, shippingAddress:stringify(addr), subtotal, discount:0, couponId:coupon?.id||null, couponDiscount:couponDisc, shippingCost:quote.cost, paymentFee:pay.fee, tax, total, paymentMethod:body.paymentMethod, paymentMethodRef:pay.method?.id||method.id, paymentStatus:needsVerify?'awaiting-verification':'pending', orderStatus:needsVerify?'awaiting-payment':'pending', notes:body.notes||'', governorate:quote.governorate?.id||null, paymentReference:reference||null, paymentProof:proof||null, paymentVerification:stringify(needsVerify?{state:'pending',history:[{proof,reference,at:now,state:'pending'}]}:{state:'none',history:[]}), financialSnapshot:stringify(fin), statusHistory:stringify(statusHistory), activity:stringify([{type:'created',at:now,by:c.get('user')?.id||'guest'}]), adminNotes:'[]', estimatedDeliveryFrom:quote.estimate?new Date(Date.now()+quote.estimate.min*86400000).toISOString():null, estimatedDeliveryTo:quote.estimate?new Date(Date.now()+quote.estimate.max*86400000).toISOString():null, countryCode:country, currency:countryRow.currency, currencySymbol:countryRow.currencySymbol, createdAt:now, updatedAt:now };
   const cols = Object.keys(orderData);
   for (const [i,k] of cols.entries()) { if (orderData[k] === undefined) orderData[k] = null; }
   const statements = [c.env.DB.prepare(`INSERT INTO orders (${cols.join(',')}) VALUES (${cols.map(()=>'?').join(',')})`).bind(...cols.map(k=>orderData[k]))];

@@ -202,6 +202,10 @@ app.post('/products/bulk', adminOrModerator, async c => {
     case 'brand': sql = `UPDATE products SET brand=? WHERE id IN (${ph})`; params = [value, ...ids]; break;
     case 'stock': sql = `UPDATE products SET stock=? WHERE id IN (${ph})`; params = [Number(value) || 0, ...ids]; break;
     case 'price': sql = `UPDATE products SET price=? WHERE id IN (${ph})`; params = [Number(value) || 0, ...ids]; break;
+    /* الموافق عليها في المرحلة D: نسخ صريح لسعر مصر إلى حقول الإمارات (أمر إداري واعٍ — ليس تحويلاً آلياً) + تفعيل/تعطيل البلد */
+    case 'copy-eg-to-ae-price': sql = `UPDATE products SET priceAE=price, oldPriceAE=oldPrice WHERE id IN (${ph})`; params = ids; break;
+    case 'enable-ae': sql = `UPDATE products SET isActiveAE=1 WHERE id IN (${ph})`; params = ids; break;
+    case 'disable-ae': sql = `UPDATE products SET isActiveAE=0 WHERE id IN (${ph})`; params = ids; break;
     case 'delete': sql = `DELETE FROM products WHERE id IN (${ph})`; params = ids; break;
     default: return fail(c, 'إجراء جماعي غير مدعوم', 400);
   }

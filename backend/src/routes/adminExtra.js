@@ -6,6 +6,7 @@ import { RESOURCES, listResource, getResource, createResource, updateResource, d
 import { getSettings, updateSettings, resetTheme } from '../services/settings.js';
 import { DEFAULT_PERMISSIONS, ROLE_DEFS, PERMISSION_KEYS } from '../middleware/permissions.js';
 import { sanitizeHtml } from '../lib/sanitize.js';
+import { serializeOrder, invoiceHtml } from './orders.js';
 import { approveVerification, rejectVerification, auditLog } from '../services/paymentVerification.js';
 
 const app = new Hono();
@@ -101,8 +102,107 @@ app.post('/orders/bulk-status', admin, async c => { const b=await c.req.json(); 
 app.get('/orders/:id/timeline', adminOrModerator, async c => { const o=await first(c.env.DB.prepare('SELECT statusHistory,activity,adminNotes FROM orders WHERE id=?').bind(c.req.param('id'))); return ok(c,{timeline:parseJson(o.statusHistory,[]),activity:parseJson(o.activity,[]),notes:parseJson(o.adminNotes,[])}); });
 app.post('/orders/:id/notes', adminOrModerator, async c => { const b=await c.req.json(), o=await first(c.env.DB.prepare('SELECT adminNotes FROM orders WHERE id=?').bind(c.req.param('id'))); const notes=parseJson(o.adminNotes,[]); notes.push({id:uuid(),body:b.note||b.body,at:nowIso(),author:c.get('user')?.name}); await run(c.env.DB.prepare('UPDATE orders SET adminNotes=?,updatedAt=? WHERE id=?').bind(stringify(notes),nowIso(),c.req.param('id'))); return created(c,{note:notes.at(-1)}); });
 app.delete('/orders/:id/notes/:noteId', adminOrModerator, async c => { const o=await first(c.env.DB.prepare('SELECT adminNotes FROM orders WHERE id=?').bind(c.req.param('id'))); const notes=parseJson(o.adminNotes,[]).filter(n=>n.id!==c.req.param('noteId')); await run(c.env.DB.prepare('UPDATE orders SET adminNotes=?,updatedAt=? WHERE id=?').bind(stringify(notes),nowIso(),c.req.param('id'))); return ok(c,{}); });
-app.get('/orders/:id/invoice', adminOrModerator, async c => c.redirect(`/api/v1/orders/${c.req.param('id')}/invoice`));
-app.get('/orders/:id/label', adminOrModerator, async c => { const o=await first(c.env.DB.prepare('SELECT orderNumber,shippingAddress,trackingNumber FROM orders WHERE id=?').bind(c.req.param('id'))); const a=parseJson(o.shippingAddress,{}); return c.html(`<!doctype html><html dir="rtl"><meta charset="utf-8"><body style="font-family:Arial;padding:24px"><h2>شحنة ${o.orderNumber}</h2><p>${a.governorate||''} - ${a.city||''} - ${a.street||''}</p><p>${a.phone||''}</p><p>تتبع: ${o.trackingNumber||'-'}</p><button onclick="window.print()" style="padding:10px 16px">طباعة البوليصة</button></body></html>`); });
+app.get('/orders/:id/invoice', adminOrModerator, async c => {
+  const row = await first(c.env.DB.prepare('SELECT * FROM orders WHERE id=?').bind(c.req.param('id')));
+  if (!row) return fail(c, 'الطلب غير موجود', 404);
+  const order = await serializeOrder(c.env, row);
+  const settings = await getSettings(c.env);
+  const html = invoiceHtml(order, settings);
+  return c.html(html, 200, { 'Content-Type': 'text/html; charset=utf-8' });
+});
+
+app.get('/orders/:id/label', adminOrModerator, async c => {
+  const row = await first(c.env.DB.prepare('SELECT * FROM orders WHERE id=?').bind(c.req.param('id')));
+  if (!row) return fail(c, 'الطلب غير موجود', 404);
+  const order = await serializeOrder(c.env, row);
+  const settings = await getSettings(c.env);
+  const addr = order.shippingAddress || {};
+  const fin = order.financialSnapshot || {};
+  const isCod = String(order.paymentMethod).toLowerCase() === 'cod';
+  const sym = fin.currencySymbol || (fin.country === 'AE' ? 'د.إ' : 'ج.م');
+  const countryName = fin.country === 'AE' || addr.countryCode === 'AE' ? 'الإمارات العربية المتحدة 🇦🇪' : 'جمهورية مصر العربية 🇪🇬';
+  const govName = addr.governorateName || addr.governorate || '—';
+  const fullAddress = [
+    addr.street,
+    addr.buildingNumber ? `مبنى ${addr.buildingNumber}` : null,
+    addr.floor ? `طابق ${addr.floor}` : null,
+    addr.apartment ? `شقة ${addr.apartment}` : null,
+    addr.district,
+    addr.city,
+    govName
+  ].filter(Boolean).join('، ');
+
+  const itemsList = (order.items || []).map((i) => `<li>${i.name} (×${i.quantity})</li>`).join('');
+
+  const html = `<!doctype html>
+<html dir="rtl" lang="ar">
+<head>
+  <meta charset="utf-8">
+  <title>بوليصة شحن ${order.orderNumber}</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 20px; background: #f4f4f4; color: #111; }
+    .label-card { max-width: 600px; margin: 0 auto; background: #fff; border: 2px solid #111; border-radius: 12px; padding: 24px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+    .top-bar { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #111; padding-bottom: 12px; margin-bottom: 16px; }
+    .store-name { font-size: 20px; font-weight: 800; }
+    .order-num { font-size: 22px; font-weight: 900; font-family: monospace; letter-spacing: 1px; }
+    .payment-badge { display: block; text-align: center; font-size: 16px; font-weight: 800; padding: 10px; border-radius: 8px; margin-bottom: 16px; }
+    .cod-badge { background: #fef2f2; color: #991b1b; border: 2px solid #f87171; }
+    .prepaid-badge { background: #f0fdf4; color: #166534; border: 2px solid #4ade80; }
+    .recipient-box { background: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 10px; padding: 16px; margin-bottom: 16px; font-size: 14px; line-height: 1.6; }
+    .recipient-name { font-size: 18px; font-weight: 800; color: #0f172a; margin-bottom: 4px; }
+    .phone { font-size: 18px; font-weight: 800; direction: ltr; display: inline-block; font-family: monospace; }
+    .items-box { font-size: 12px; color: #475569; border-top: 1px dashed #ccc; padding-top: 12px; }
+    .actions { margin-top: 20px; text-align: center; }
+    .btn { background: #111; color: #fff; border: none; padding: 10px 24px; border-radius: 99px; font-weight: bold; cursor: pointer; font-size: 14px; }
+    @media print { body { padding: 0; background: #fff; } .label-card { border: 2px solid #000; box-shadow: none; max-width: 100%; } .actions { display: none !important; } }
+  </style>
+</head>
+<body>
+  <div class="label-card">
+    <div class="top-bar">
+      <div>
+        <div class="store-name">${settings.siteNameAr || 'الزينة — AL-ZEINA'}</div>
+        <div style="font-size:12px;color:#666;">هاتف المتجر: ${settings.contact?.phone || '—'}</div>
+      </div>
+      <div style="text-align:left;">
+        <div style="font-size:12px;color:#666;">بوليصة شحن</div>
+        <div class="order-num">${order.orderNumber}</div>
+      </div>
+    </div>
+
+    ${
+      isCod
+        ? `<div class="payment-badge cod-badge">⚠️ الدفع عند الاستلام — المطلوب تحصيله: ${order.total} ${sym}</div>`
+        : `<div class="payment-badge prepaid-badge">✓ دفع مسبق — تم السداد / مدفوع بالكامل</div>`
+    }
+
+    <div class="recipient-box">
+      <div class="recipient-name">👤 ${addr.name || order.user?.name || order.guestEmail || 'عميل المتجر'}</div>
+      <div>📞 هاتف المستلم: <span class="phone">${addr.phone || order.guestPhone || order.user?.phone || '—'}</span></div>
+      <div>🌍 الدولة: <strong>${countryName}</strong></div>
+      <div>🏛️ المحافظة / الإمارة: <strong>${govName}</strong></div>
+      <div style="margin-top:6px;font-size:13px;color:#334155;">📍 العنوان التفصيلي: ${fullAddress || '—'}</div>
+      ${addr.notes ? `<div style="margin-top:6px;font-size:12px;color:#d97706;">📝 ملاحظات التوصيل: ${addr.notes}</div>` : ''}
+    </div>
+
+    <div class="items-box">
+      <strong>محتويات الشحنة (${order.items?.length || 0} صنف):</strong>
+      <ul style="margin:4px 0 0;padding-right:20px;">
+        ${itemsList}
+      </ul>
+      ${order.trackingNumber ? `<p style="margin-top:8px;font-weight:bold;">رقم التتبع: ${order.trackingNumber}</p>` : ''}
+    </div>
+
+    <div class="actions">
+      <button class="btn" onclick="window.print()">طباعة بوليصة الشحن</button>
+    </div>
+  </div>
+  <script>window.onload = () => setTimeout(() => window.print(), 300);</script>
+</body>
+</html>`;
+
+  return c.html(html, 200, { 'Content-Type': 'text/html; charset=utf-8' });
+});
 app.put('/orders/:id/status', adminOrModerator, async c => { const b=await c.req.json(), o=await first(c.env.DB.prepare('SELECT * FROM orders WHERE id=?').bind(c.req.param('id'))); const hist=parseJson(o.statusHistory,[]); hist.push({status:b.status||b.orderStatus,at:nowIso(),note:b.note,by:c.get('user')?.id}); await run(c.env.DB.prepare('UPDATE orders SET orderStatus=?,statusHistory=?,updatedAt=? WHERE id=?').bind(b.status||b.orderStatus,stringify(hist),nowIso(),o.id)); return ok(c,{message:'updated'}); });
 app.put('/orders/:id/shipping', adminOrModerator, async c => { const b=await c.req.json(); await run(c.env.DB.prepare('UPDATE orders SET trackingNumber=?,shippingCompany=?,updatedAt=? WHERE id=?').bind(b.trackingNumber,b.shippingCompany,nowIso(),c.req.param('id'))); return ok(c,{message:'updated'}); });
 app.put('/orders/:id/payment-status', adminOrModerator, async c => { const b=await c.req.json(); await run(c.env.DB.prepare('UPDATE orders SET paymentStatus=?,updatedAt=? WHERE id=?').bind(b.paymentStatus,nowIso(),c.req.param('id'))); return ok(c,{message:'updated'}); });

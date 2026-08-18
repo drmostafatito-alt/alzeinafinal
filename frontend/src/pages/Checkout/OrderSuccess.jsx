@@ -21,8 +21,9 @@ export default function OrderSuccess() {
   if (!order) return <Navigate to="/" replace />;
 
   const statusMeta = ORDER_STATUS_META[order.orderStatus] || ORDER_STATUS_META.pending;
-  /* دفع يدوي: الطلب قيد مراجعة الإيصال — لا يُظهر نجاح دفع كاذب */
-  const awaitingVerification = order.paymentStatus === 'awaiting-verification';
+  /* دفع يدوي / غير COD: الطلب قيد مراجعة الدفع والتأكيد (ينطبق على كلا البلدين) */
+  const isNonCod = String(order.paymentMethod).toLowerCase() !== 'cod';
+  const awaitingVerification = isNonCod || order.paymentStatus === 'awaiting-verification' || order.paymentStatus === 'pending';
 
   return (
     <div className="container-x py-12">

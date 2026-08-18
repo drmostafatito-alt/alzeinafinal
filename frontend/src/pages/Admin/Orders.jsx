@@ -4,6 +4,7 @@ import {
   FiClock, FiDownload, FiFileText, FiMessageSquare, FiPrinter, FiRotateCcw, FiSend, FiShoppingCart,
   FiTrash2, FiTruck
 } from 'react-icons/fi';
+import { FaWhatsapp } from 'react-icons/fa';
 import { toast } from 'react-toastify';
 import AdminPageHeader from '@/components/admin/AdminPageHeader';
 import Badge from '@/components/ui/Badge';
@@ -527,25 +528,54 @@ export default function AdminOrders() {
           <div className="space-y-5 p-6">
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="rounded-xl bg-cream p-4">
-                <p className="mb-2 text-xs font-bold text-ink-muted">{t('admin.customer')}</p>
-                <p className="text-sm font-semibold text-ink">{viewing.user?.name}</p>
-                <p className="text-xs text-ink-muted">{viewing.user?.email}</p>
-                <p dir="ltr" className="text-xs text-ink-muted rtl:text-end">
-                  {viewing.user?.phone || viewing.shippingAddress?.phone}
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="text-xs font-bold text-ink-muted">{t('admin.customer')}</p>
+                  {(viewing.shippingAddress?.phone || viewing.guestPhone || viewing.user?.phone) ? (
+                    <a
+                      href={`https://wa.me/${String(viewing.shippingAddress?.phone || viewing.guestPhone || viewing.user?.phone || '').replace(/[^\d]/g, '')}?text=${encodeURIComponent('مرحباً، بخصوص الطلب رقم ' + viewing.orderNumber)}`}
+                      target="_blank"
+                      rel="noreferrer noopener"
+                      className="inline-flex items-center gap-1 rounded-full bg-[#25D366] px-2.5 py-1 text-[11px] font-bold text-white shadow-sm hover:brightness-105"
+                    >
+                      <FaWhatsapp size={12} /> واتساب
+                    </a>
+                  ) : null}
+                </div>
+                <p className="text-sm font-semibold text-ink">
+                  {viewing.shippingAddress?.name || viewing.user?.name || viewing.guestEmail || '—'}
+                </p>
+                <p className="text-xs text-ink-muted">{viewing.user?.email || viewing.guestEmail || '—'}</p>
+                <p dir="ltr" className="mt-1 text-xs font-bold text-ink text-start">
+                  📞 {viewing.shippingAddress?.phone || viewing.guestPhone || viewing.user?.phone || '—'}
                 </p>
               </div>
               <div className="rounded-xl bg-cream p-4">
-                <p className="mb-2 text-xs font-bold text-ink-muted">{t('orders.shippingAddress')}</p>
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="text-xs font-bold text-ink-muted">{t('orders.shippingAddress')}</p>
+                  <Badge variant="blush">
+                    {viewing.financialSnapshot?.country === 'AE' || viewing.shippingAddress?.countryCode === 'AE'
+                      ? '🇦🇪 الإمارات'
+                      : '🇪🇬 مصر'}
+                  </Badge>
+                </div>
                 <p className="text-xs leading-relaxed text-ink-soft">
                   {[
                     viewing.shippingAddress?.street,
+                    viewing.shippingAddress?.buildingNumber ? `مبنى ${viewing.shippingAddress.buildingNumber}` : null,
+                    viewing.shippingAddress?.floor ? `طابق ${viewing.shippingAddress.floor}` : null,
+                    viewing.shippingAddress?.apartment ? `شقة ${viewing.shippingAddress.apartment}` : null,
                     viewing.shippingAddress?.district,
                     viewing.shippingAddress?.city,
-                    viewing.shippingAddress?.governorate,
+                    viewing.shippingAddress?.governorateName || viewing.shippingAddress?.governorate
                   ]
                     .filter(Boolean)
-                    .join('، ')}
+                    .join('، ') || '—'}
                 </p>
+                {viewing.shippingAddress?.notes ? (
+                  <p className="mt-2 text-[11px] font-medium text-amber-800">
+                    ملاحظات: {viewing.shippingAddress.notes}
+                  </p>
+                ) : null}
               </div>
             </div>
 

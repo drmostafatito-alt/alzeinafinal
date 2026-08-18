@@ -55,6 +55,7 @@ export default function Checkout() {
     register,
     handleSubmit,
     watch,
+    setValue,
     formState: { errors },
   } = useForm({
     defaultValues: {
@@ -119,7 +120,14 @@ export default function Checkout() {
   useEffect(() => {
     if (!govValue) return;
     const gov = governorates.find((g) => g.code === govValue);
-    if (gov) setShippingGov({ ...gov, shipping: gov.shippingCost });
+    /* Gate 5: محافظة لا تنتمي للدولة الحالية (بعد تبديل البلد) — تُمحى مع
+       أي عرضة شحن قديمة، وإلا ظلّ «gov-cairo» مختاراً تحت دولة الإمارات */
+    if (!gov) {
+      setServerShipping(null);
+      setValue('governorate', '');
+      return;
+    }
+    setShippingGov({ ...gov, shipping: gov.shippingCost });
 
     let cancelled = false;
     client

@@ -4,11 +4,13 @@ import { CURRENCY } from './constants';
  * رمز العملة يأتي من إعدادات لوحة الإدارة.
  * ConfigProvider يحدّثه عند الإقلاع عبر setCurrency، والقيم أدناه احتياطية فقط.
  */
-let currency = { ar: CURRENCY.symbol.ar, en: CURRENCY.symbol.en };
+let currency = { ar: CURRENCY.symbol.ar, en: CURRENCY.symbol.en, position: 'auto' };
 
-export const setCurrency = ({ symbol, symbolEn } = {}) => {
+export const setCurrency = ({ symbol, symbolEn, position } = {}) => {
   if (symbol) currency.ar = symbol;
   if (symbolEn) currency.en = symbolEn;
+  /* موضع الرمز من الدولة (Phase D: EG=after, AE=before). 'auto' = السلوك القديم */
+  currency.position = position === 'before' || position === 'after' ? position : 'auto';
 };
 
 export const formatPrice = (value, lang = 'ar') => {
@@ -17,6 +19,11 @@ export const formatPrice = (value, lang = 'ar') => {
     minimumFractionDigits: n % 1 === 0 ? 0 : 2,
     maximumFractionDigits: 2,
   }).format(n);
+  /* الدولة إن قالت before (الإمارات): الرمز أولاً في اللغتين.
+     وإلا نحفظ سلوك مصر القائم حرفياً: عربي بعد، إنجليزي قبل. */
+  if (currency.position === 'before') {
+    return lang === 'ar' ? `${currency.ar} ${num}` : `${currency.en} ${num}`;
+  }
   return lang === 'ar' ? `${num} ${currency.ar}` : `${currency.en} ${num}`;
 };
 

@@ -175,6 +175,12 @@ export function useCountdown(targetDate) {
 /** عناصر شوهدت مؤخراً */
 export function useRecentlyViewed() {
   const [items, setItems] = useLocalStorage('alzeina_recent', []);
+  /* Gate 5: تبديل الدولة يعيد بناء السجل من الخادم ثم يخطرنا هنا */
+  useEffect(() => {
+    const refresh = () => setItems(readStorage('alzeina_recent', []));
+    window.addEventListener('alzeina:recent-refresh', refresh);
+    return () => window.removeEventListener('alzeina:recent-refresh', refresh);
+  }, [setItems]);
   const add = useCallback(
     (product) => {
       if (!product) return;

@@ -177,6 +177,15 @@ export const orderService = {
     withFallback(() => client.put(`/orders/${id}/cancel`, { reason }), () => M.mockCancelOrder(id, reason)),
 };
 
+/* ============ Users ============ */
+export const userService = {
+  /** حفظ دولة المستخدم (Phase D) — لا ترويسة X-Country على مسارات /users */
+  updateCountry: async (country) => {
+    const res = await client.put('/users/me/country', { country });
+    return { data: res.data?.data ?? res.data };
+  },
+};
+
 /* ============ Addresses ============ */
 export const addressService = {
   list: () =>

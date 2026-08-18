@@ -3,7 +3,8 @@ import { FiCheck, FiChevronDown } from 'react-icons/fi';
 import { useConfig } from '@/config/ConfigProvider';
 import { useClickOutside, useEscapeKey } from '@/hooks';
 import { useI18n } from '@/i18n';
-import { useCountry, useCountryStore } from '@/store/countryStore';
+import { switchCountry } from '@/services/countryFx';
+import { useCountry } from '@/store/countryStore';
 
 /**
  * Country Selector (EG / AE) — واجهة خفيفة فوق countryStore (Gate 1).
@@ -71,9 +72,9 @@ export default function CountrySelector({ tone = 'topbar' }) {
 
   const current = list.find((c) => c.code === country) || list.find((c) => c.isDefault) || list[0];
 
-  /** Gate 4: التبديل = setCountry فقط؛ البقية تتبع آلياً (keys/header)، وسلة/شحن Gate 5 */
+  /** Gate 5: الزر يقود المنسّق المركزي — config/سلة/عملة/شحن/recent تتبع تلقائياً */
   const choose = (code) => {
-    useCountryStore.getState().setCountry(code);
+    void switchCountry(code);
     close();
   };
 

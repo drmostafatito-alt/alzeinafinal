@@ -114,22 +114,36 @@ export const useCartStore = create()(
         const byId = new Map(products.map((p) => [String(p._id || p.id), p]));
         set({
           items: get()
-            .items.filter((i) => byId.has(String(i.productId)))
-            .map((i) => {
+            .items.map((i) => {
               const p = byId.get(String(i.productId));
-              const stock = p.stock ?? i.stock ?? MAX_QTY;
+              if (!p) return null; // غير متوفر في الدولة الحالية ⇒ يُسقَط من السلة
+              /**
+               * Phase E (B2): سطر الخيار يُعاد ربط سعره من بيانات الدولة
+               * الجديدة بدل الاحتفاظ بالسعر المخزّن. الخادم يشكّل أسعار
+               * variants حسب البلد (Phase D: سعر الإمارات على مستوى المنتج)،
+               * والخيار غير الموجود إطلاقاً = غير متوفر ⇒ سقوط السطر.
+               */
+              const v = i.variantSku
+                ? Array.isArray(p.variants)
+                  ? p.variants.find((x) => x && x.sku === i.variantSku)
+                  : null
+                : null;
+              if (i.variantSku && !v) return null;
+              const price = v ? v.price ?? i.price : p.price ?? i.price;
+              const stock = v?.stock ?? p.stock ?? i.stock ?? MAX_QTY;
               return {
                 ...i,
                 name: p.name ?? i.name,
                 nameEn: p.nameEn ?? i.nameEn,
                 slug: p.slug ?? i.slug,
                 image: p.mainImage || p.image || i.image,
-                price: i.variantSku ? i.price : p.price ?? i.price,
+                price,
                 oldPrice: p.oldPrice ?? i.oldPrice,
                 stock,
                 quantity: normalizeQty(i.quantity, stock),
               };
-            }),
+            })
+            .filter(Boolean),
         });
       },
 

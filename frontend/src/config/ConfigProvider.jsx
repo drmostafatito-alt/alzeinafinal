@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import client from '@/api/client';
 import { setCurrency } from '@/utils/format';
 import { localizedBrandName } from '@/utils/helpers';
@@ -359,13 +359,18 @@ export function ConfigProvider({ children }) {
   const [config, setConfig] = useState(FALLBACK);
   const [loading, setLoading] = useState(true);
   const [maintenance, setMaintenance] = useState(null);
+  /* Gate 5: رقم جيل لكل تحميل — استجابة قديمة لدولة سابقة لا تطبَّق أبداً */
+  const genRef = useRef(0);
   /* الخادم غير متاح عند الإقلاع — كان يُبتلع بصمت فيُعرض المتجر بصفحة بيضاء فارغة.
      نحتفظ بالعلم لعرض شاشة تشخيص واضحة مع زر إعادة محاولة بدل الفراغ الصامت. */
   const [configError, setConfigError] = useState(false);
 
   const load = useCallback(async () => {
+    const my = ++genRef.current;
     try {
       const res = await client.get('/storefront/config');
+      /* تبديل سريع EG→AE→EG: أي استجابة ليست من أحدث طلب تُرمى بالكامل */
+      if (my !== genRef.current) return;
       const data = res.data?.data;
       if (data?.settings) {
         /**
@@ -398,6 +403,7 @@ export function ConfigProvider({ children }) {
           .setActiveCountries(data.countries, { defaultCode: data.country?.code });
       }
     } catch (err) {
+      if (my !== genRef.current) return; // خطأ قديم لدولة سابقة لا يؤثر
       if (err?.response?.status === 503 && err.response.data?.maintenance) {
         setMaintenance(err.response.data.message);
         setConfigError(false);
@@ -407,13 +413,32 @@ export function ConfigProvider({ children }) {
       }
       // نُبقي القيم الافتراضية حتى لا تنهار الواجهة
     } finally {
-      setLoading(false);
+      /* تحميل أحدث ما زال جارياً؟ لا نطفئ شاشة الانتظار قبله */
+      if (my === genRef.current) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  /**
+   * Gate 5 — تبديل الدولة: نعيد تحميل الإعدادات من الخادم للدولة الجديدة
+   * (الـinterceptor يرسل X-Country تلقائياً). أثناء ذلك loading=true فيعرض
+   * App.jsx شاشة التحميل كاملة ⇒ لا تظهر أبداً لحظة نصف-دولة (عملة قديمة
+   * مع منتجات جديدة). أول إقلاع تتكفل به effect الأعلى ولا نكرره هنا.
+   */
+  const country = useCountryStore((s) => s.country);
+  const countryRef = useRef(null);
+  useEffect(() => {
+    if (countryRef.current === null || countryRef.current === country) {
+      countryRef.current = country;
+      return;
+    }
+    countryRef.current = country;
+    setLoading(true);
+    load();
+  }, [country, load]);
 
   /* لغة المتجر الافتراضية (locale.defaultLanguage) تتقدّم على لغة المتصفح
      في الزيارة الأولى فقط، ولا تُفرض على زائر بدّل اللغة بنفسه. */
@@ -437,7 +462,9 @@ export function ConfigProvider({ children }) {
     injectAnalytics(config.settings.analytics);
     setCurrency({
       symbol: config.settings.payment?.currencySymbol,
-      symbolEn: config.settings.payment?.currencySymbolEn
+      symbolEn: config.settings.payment?.currencySymbolEn,
+      /* موضع الرمز يتبع الدولة (EG=after/AE=before) — Phase D يدمجه في settings.payment */
+      position: config.settings.payment?.currencyPosition
     });
     // قواعد الشحن تأتي من الإعدادات لا من ثوابت الكود
     useCartStore.getState().setShippingRules(config.settings.shipping || {});

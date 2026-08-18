@@ -43,7 +43,7 @@ npx wrangler secret put JWT_SECRET
 npx wrangler secret put RESEND_API_KEY   # only if using Resend for password-reset email
 ```
 
-Required vars: `JWT_SECRET`, `RESET_LINK_BASE_URL`, `CORS_ORIGINS`, `EMAIL_FROM`.  
-Set `EMAIL_PROVIDER=resend` (or `mailchannels`) in production. Password reset tokens are generated even if email is not configured; **outbound email will not reach customers until a provider + `RESEND_API_KEY` (or Mailchannels DNS) is set.**
+Required vars: `JWT_SECRET`, `RESET_LINK_BASE_URL`, `CORS_ORIGINS` (exact origins, never `*`), `EMAIL_FROM`.  
+Set `EMAIL_PROVIDER=resend` (or `mailchannels`) in production. Password reset **code is ready**; **outbound email is DEPLOYMENT CONFIGURATION REQUIRED** until `RESEND_API_KEY` (or Mailchannels DNS) + a verified `EMAIL_FROM` domain are set. Production never uses Mailpit/console.
 
-D1 `database_id` and R2 bucket names must be replaced in `backend/wrangler.toml`.
+`backend/wrangler.toml` `database_id` is **UNSET_SET_AFTER_D1_CREATE** on purpose. Create D1 and paste the real UUID before remote deploy. Do not invent an ID.

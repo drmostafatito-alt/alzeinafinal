@@ -12,7 +12,7 @@ const deepMerge = (base, override) => {
 export const DEFAULT_SETTINGS = {
   siteName: 'Al Zeina', siteNameAr: 'الزينة', tagline: 'جمالك يبدأ من هنا', taglineEn: 'Where your beauty begins', logo: '', logoLight: '', favicon: '',
   theme: { primary:'#111111', accent:'#C89A8B', cream:'#FFF8F5', blush:'#F8E8EA', surface:'#FFFFFF', mode:'light', allowUserToggle:true, fontAr:'Cairo', fontEn:'Poppins', radius:'rounded', cardStyle:'classic', defaultLang:'ar' },
-  contact: { email:'', supportEmail:'', phone:'', phone2:'', whatsapp:'', whatsappEnabled:true, whatsappMessage:'مرحباً، أحتاج مساعدة بخصوص', address:'', mapEmbed:'', businessHours:'السبت - الخميس: 10ص - 10م' },
+  contact: { email:'', supportEmail:'', phone:'', phone2:'', whatsapp:'', whatsappEG:'', whatsappAE:'', whatsappEnabled:true, whatsappMessage:'مرحباً، أحتاج مساعدة بخصوص', address:'', mapEmbed:'', businessHours:'السبت - الخميس: 10ص - 10م' },
   social: { facebook:'', instagram:'', twitter:'', tiktok:'', youtube:'', linkedin:'', snapchat:'', telegram:'' },
   shipping: { enabled:true, codEnabled:true, defaultCost:50, freeShippingEnabled:true, freeShippingThreshold:500, estimatedDaysMin:2, estimatedDaysMax:5, note:'' },
   locale: { timezone:'Africa/Cairo', defaultLanguage:'ar', languages:['ar','en'], allowLanguageSwitch:true, dateFormat:'dd/MM/yyyy', weekStart:'saturday', numberDecimals:2 },

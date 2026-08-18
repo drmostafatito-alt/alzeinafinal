@@ -855,7 +855,9 @@ export default function AdminSettings() {
                 <Input label={`${t('common.email')} (support)`} type="email" dir="ltr" {...register('contact.supportEmail')} />
                 <Input label={t('common.phone')} dir="ltr" {...register('contact.phone')} />
                 <Input label={`${t('common.phone')} 2`} dir="ltr" {...register('contact.phone2')} />
-                <Input label="WhatsApp" dir="ltr" {...register('contact.whatsapp')} />
+                <Input label="WhatsApp (افتراضي)" dir="ltr" {...register('contact.whatsapp')} />
+                <Input label="WhatsApp مصر 🇪🇬" dir="ltr" hint="إن فُرغ يُستخدم الافتراضي" {...register('contact.whatsappEG')} />
+                <Input label="WhatsApp الإمارات 🇦🇪" dir="ltr" hint="إن فُرغ يُستخدم الافتراضي" {...register('contact.whatsappAE')} />
                 <Input label={t('admin.whatsappMessage')} {...register('contact.whatsappMessage')} />
                 <Input label={`${t('checkout.city')} (AR)`} {...register('contact.address')} />
                 <Input label={`${t('checkout.city')} (EN)`} dir="ltr" {...register('contact.addressEn')} />

@@ -28,9 +28,11 @@ const MAILPIT_DEFAULT_URL = 'http://127.0.0.1:8025';
  */
 const pickProvider = (env) => {
   const configured = String(env.EMAIL_PROVIDER || '').trim().toLowerCase();
-  if (configured) return configured;
   const isProd = String(env.ENVIRONMENT || 'development') === 'production';
-  return isProd ? 'resend' : 'mailpit';
+  /* Production never silently uses Mailpit/console even if someone left EMAIL_PROVIDER set. */
+  if (isProd && (!configured || configured === 'mailpit' || configured === 'console')) return 'resend';
+  if (configured) return configured;
+  return 'mailpit';
 };
 
 /** يرجع رسالة خطأ وصفية إن كان المزوّد غير مكتمل التهيئة — أو null إن كان جاهزاً */

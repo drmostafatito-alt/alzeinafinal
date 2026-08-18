@@ -68,7 +68,17 @@ export async function calculateShipping(env, settings, { governorateCode, govern
     return { cost: 0, free: true, governorate, estimate };
   }
 
-  return { cost: round2(cost), free: cost === 0, governorate, estimate };
+  return { cost: round2(afterFree), free: afterFree === 0, governorate, estimate };
+}
+
+/** Country-aware free shipping. Threshold is never hardcoded. Disabled = always charge. */
+export function applyFreeShipping(ship = {}, subtotal, baseCost) {
+  const amount = Number(subtotal) || 0;
+  const cost = Number(baseCost) || 0;
+  const freeThreshold = Number(ship.freeShippingThreshold) || 0;
+  const freeOn = ship.freeShippingEnabled === true || ship.freeShippingEnabled === 1;
+  if (freeOn && freeThreshold > 0 && amount >= freeThreshold) return { cost: 0, free: true, threshold: freeThreshold };
+  return { cost: round2(cost), free: false, threshold: freeThreshold };
 }
 
 export async function calculatePaymentFee(env, { methodCode, methodId, amount }) {

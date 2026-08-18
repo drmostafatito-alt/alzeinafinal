@@ -193,7 +193,7 @@ export function waybillHtml(order, s = {}) {
 
   const payBlock = isCod
     ? `<div class="payment-badge cod-badge">الدفع عند الاستلام — المطلوب تحصيله: ${esc(order.total)} ${sym}</div>`
-    : `<div class="payment-badge prepaid-badge">مدفوع مسبقاً — لا يتم تحصيل مبلغ عند التسليم</div>`;
+    : `<div class="payment-badge prepaid-badge">مدفوع مسبقًا — لا يتم تحصيل مبلغ عند التسليم</div>`;
 
   return `<!doctype html>
 <html dir="rtl" lang="ar">

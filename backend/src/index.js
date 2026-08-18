@@ -29,18 +29,34 @@ import { randomToken } from './lib/crypto.js';
 import { runScheduledJobs } from './cron.js';
 
 const isProd = (env) => (env.ENVIRONMENT || 'development') === 'production';
-const corsOrigin = (origin, c) => {
-  const allowed = (c.env.CORS_ORIGINS || c.env.FRONTEND_URL || (isProd(c.env) ? '' : '*')).split(',').map(s => s.trim()).filter(Boolean);
-  if (allowed.includes('*')) return origin || '*';
-  if (origin && allowed.includes(origin)) return origin;
-  return allowed[0] || origin || null;
-};
+
+const DEV_ORIGINS = [
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+  'http://localhost:8787',
+  'http://127.0.0.1:8787'
+];
+
+/** Strict origin allowlist. Production never honors "*". Unlisted origins get no ACAO. */
+export function resolveCorsOrigin(origin, env) {
+  const raw = String(env?.CORS_ORIGINS || env?.FRONTEND_URL || '').split(',').map((s) => s.trim()).filter(Boolean);
+  const prod = isProd(env);
+  let allowed = raw.filter((o) => o !== '*');
+  if (!prod) {
+    if (raw.includes('*')) return origin || null;
+    allowed = [...new Set([...allowed, ...DEV_ORIGINS])];
+  }
+  if (!origin) return null;
+  return allowed.includes(origin) ? origin : null;
+}
 
 const app = new Hono();
 app.use('*', async (c, next) => cors({
-  origin: (origin) => corsOrigin(origin, c),
+  origin: (origin) => resolveCorsOrigin(origin, c.env),
   allowMethods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
-  allowHeaders: ['Content-Type','Authorization','X-Requested-With','X-CSRF-Token'],
+  allowHeaders: ['Content-Type','Authorization','X-Requested-With','X-CSRF-Token','X-Country'],
   credentials: true,
   exposeHeaders: ['Content-Disposition']
 })(c, next));
@@ -127,7 +143,8 @@ app.get('/uploads/*', async c => {
 app.get('/', c => c.text('AL-ZEINA Cloudflare Worker API'));
 app.onError((err, c) => {
   console.error(err);
-  return c.json({ status:'error', message: err.message || 'Internal Server Error' }, err.status || 500);
+  const expose = err.status && err.status < 500 && err.message;
+  return c.json({ status:'error', message: expose ? err.message : 'Internal Server Error' }, err.status || 500);
 });
 app.notFound(c => c.json({status:'error',message:'Not found'},404));
 

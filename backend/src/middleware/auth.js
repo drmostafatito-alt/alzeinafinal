@@ -20,7 +20,7 @@ export async function loadUser(c, next) {
   let token;
   const auth = c.req.header('authorization') || c.req.header('Authorization');
   if (auth?.startsWith('Bearer')) token = auth.split(' ')[1];
-  if (!token) token = c.req.query('token');
+  /* JWTs are never accepted from ?token= — they leak via history, logs, and Referer. */
   if (token) {
     const payload = await verifyJwt(token, getJwtSecret(c));
     if (payload) {

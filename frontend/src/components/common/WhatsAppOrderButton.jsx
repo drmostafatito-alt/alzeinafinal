@@ -3,6 +3,7 @@ import { useConfig } from '@/config/ConfigProvider';
 import { registerExtraTranslations, useI18n } from '@/i18n';
 import { paymentTranslations } from '@/i18n/paymentTranslations';
 import { cn } from '@/utils/helpers';
+import { useCountryStore } from '@/store/countryStore';
 
 registerExtraTranslations('payments', paymentTranslations);
 
@@ -14,11 +15,14 @@ registerExtraTranslations('payments', paymentTranslations);
 export default function WhatsAppOrderButton({ orderNumber, order, className, size = 'md' }) {
   const { t } = useI18n();
   const { settings } = useConfig();
+  const storeCountry = useCountryStore((s) => s.country);
   const c = settings.contact || {};
+  const country = String(order?.financialSnapshot?.country || order?.countryCode || storeCountry || 'EG').toUpperCase();
+  const rawNumber = (country === 'AE' ? (c.whatsappAE || c.whatsapp) : (c.whatsappEG || c.whatsapp)) || '';
 
-  if (!c.whatsappEnabled || !c.whatsapp) return null;
+  if (!c.whatsappEnabled || !rawNumber) return null;
 
-  const number = String(c.whatsapp).replace(/[^\d]/g, '');
+  const number = String(rawNumber).replace(/[^\d]/g, '');
   if (!number) return null;
 
   const total = order?.total != null ? String(order.total) : '';

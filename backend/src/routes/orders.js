@@ -31,10 +31,29 @@ const orderNumber = async (env) => {
 
 async function serializeOrder(env, row, includeItems = true) {
   if (!row) return null;
-  const order = { ...row, _id:row.id, shippingAddress:parseJson(row.shippingAddress,{}), paymentVerification:parseJson(row.paymentVerification,{state:'none',history:[]}), financialSnapshot:parseJson(row.financialSnapshot,{}), statusHistory:parseJson(row.statusHistory,[]), activity:parseJson(row.activity,[]), adminNotes:parseJson(row.adminNotes,[]) };
-  if (includeItems) order.items = await all(env.DB.prepare('SELECT * FROM order_items WHERE orderId=?').bind(row.id));
+  const addr = parseJson(row.shippingAddress, {});
   const user = row.userId ? await first(env.DB.prepare('SELECT id,name,email,phone FROM users WHERE id=?').bind(row.userId)) : null;
-  order.user = user ? { ...user, _id:user.id } : undefined;
+  const customerName = addr.name || user?.name || row.guestEmail || 'عميل المتجر';
+  const customerPhone = addr.phone || row.guestPhone || user?.phone || '';
+  const customerEmail = row.guestEmail || user?.email || '';
+
+  const order = {
+    ...row,
+    _id: row.id,
+    customerName,
+    customerPhone,
+    customerEmail,
+    shippingAddress: addr,
+    paymentVerification: parseJson(row.paymentVerification, { state: 'none', history: [] }),
+    financialSnapshot: parseJson(row.financialSnapshot, {}),
+    statusHistory: parseJson(row.statusHistory, []),
+    activity: parseJson(row.activity, []),
+    adminNotes: parseJson(row.adminNotes, [])
+  };
+  if (includeItems) order.items = await all(env.DB.prepare('SELECT * FROM order_items WHERE orderId=?').bind(row.id));
+  order.user = user
+    ? { ...user, name: user.name || customerName, phone: user.phone || customerPhone, _id: user.id }
+    : { id: 'guest', name: customerName, email: customerEmail, phone: customerPhone, _id: 'guest' };
   return order;
 }
 
@@ -49,7 +68,17 @@ app.post('/', optionalAuth, async c => {
   if (!body.shippingAddress || !body.paymentMethod || !Array.isArray(body.items) || !body.items.length) return fail(c,'بيانات الطلب غير مكتملة',400);
   if (!body.governorateCode && !body.governorateId) return fail(c,'يجب اختيار المحافظة',400);
   const rawAddr = typeof body.shippingAddress === 'string' ? JSON.parse(body.shippingAddress) : body.shippingAddress;
-  const addr = { ...rawAddr, governorateCode: body.governorateCode || body.governorateId || rawAddr?.governorateCode };
+  const custName = rawAddr?.name || body.name || body.guestName || body.recipientName || c.get('user')?.name || 'عميل المتجر';
+  const custPhone = rawAddr?.phone || body.phone || body.guestPhone || body.recipientPhone || c.get('user')?.phone || '';
+  const custEmail = body.email || body.guestEmail || c.get('user')?.email || '';
+
+  const addr = {
+    ...rawAddr,
+    name: custName,
+    phone: custPhone,
+    email: custEmail,
+    governorateCode: body.governorateCode || body.governorateId || rawAddr?.governorateCode
+  };
   if (!addr?.phone || !addr?.street || !addr?.city) return fail(c,'عنوان الشحن غير مكتمل',400);
   const method = await first(c.env.DB.prepare('SELECT * FROM payment_methods WHERE code=? AND isActive=1 AND isVisible=1').bind(String(body.paymentMethod).toLowerCase()));
   if (!method) return fail(c,'طريقة الدفع غير متاحة حالياً',400);
@@ -100,7 +129,7 @@ app.post('/', optionalAuth, async c => {
   const statusHistory = [{ status: needsVerify ? 'awaiting-payment':'pending', at:now }];
   /* اللقطة المالية الدائمة: البلد والعملة من صف countries في D1 — لا تأثير لأي تغيير مستقبلي على الطلبات */
   const fin = { country:country, countryName:countryRow.name, countryNameEn:countryRow.nameEn, currency:countryRow.currency, currencySymbol:countryRow.currencySymbol, currencySymbolEn:countryRow.currencySymbolEn, currencyPosition:countryRow.currencyPosition||'after', taxRate:Number(settings.payment?.taxRate)||0, taxIncluded:settings.payment?.taxIncluded!==false, taxName:settings.payment?.taxName||'', taxNameEn:settings.payment?.taxNameEn||'', totalCost:round2(frozenCost), grossProfit:round2(Math.max(0,total-quote.cost-tax-frozenCost)), costComplete, shippingCost:quote.cost, discountTotal:couponDisc, governorate:{id:quote.governorate.id,code:quote.governorate.code,name:quote.governorate.name,nameEn:quote.governorate.nameEn}, capturedAt:now };
-  const orderData = { id:orderId, orderNumber: await orderNumber(c.env), userId:c.get('user')?.id||null, guestEmail:body.email||body.guestEmail||c.get('user')?.email||null, guestPhone:body.guestPhone||body.shippingAddress?.phone||null, shippingAddress:stringify(addr), subtotal, discount:0, couponId:coupon?.id||null, couponDiscount:couponDisc, shippingCost:quote.cost, paymentFee:pay.fee, tax, total, paymentMethod:body.paymentMethod, paymentMethodRef:pay.method?.id||method.id, paymentStatus:needsVerify?'awaiting-verification':'pending', orderStatus:needsVerify?'awaiting-payment':'pending', notes:body.notes||'', governorate:quote.governorate?.id||null, paymentReference:reference||null, paymentProof:proof||null, paymentVerification:stringify(needsVerify?{state:'pending',history:[{proof,reference,at:now,state:'pending'}]}:{state:'none',history:[]}), financialSnapshot:stringify(fin), statusHistory:stringify(statusHistory), activity:stringify([{type:'created',at:now,by:c.get('user')?.id||'guest'}]), adminNotes:'[]', estimatedDeliveryFrom:quote.estimate?new Date(Date.now()+quote.estimate.min*86400000).toISOString():null, estimatedDeliveryTo:quote.estimate?new Date(Date.now()+quote.estimate.max*86400000).toISOString():null, countryCode:country, currency:countryRow.currency, currencySymbol:countryRow.currencySymbol, createdAt:now, updatedAt:now };
+  const orderData = { id:orderId, orderNumber: await orderNumber(c.env), userId:c.get('user')?.id||null, guestEmail:custEmail||null, guestPhone:custPhone||null, shippingAddress:stringify(addr), subtotal, discount:0, couponId:coupon?.id||null, couponDiscount:couponDisc, shippingCost:quote.cost, paymentFee:pay.fee, tax, total, paymentMethod:body.paymentMethod, paymentMethodRef:pay.method?.id||method.id, paymentStatus:needsVerify?'awaiting-verification':'pending', orderStatus:needsVerify?'awaiting-payment':'pending', notes:body.notes||'', governorate:quote.governorate?.id||null, paymentReference:reference||null, paymentProof:proof||null, paymentVerification:stringify(needsVerify?{state:'pending',history:[{proof,reference,at:now,state:'pending'}]}:{state:'none',history:[]}), financialSnapshot:stringify(fin), statusHistory:stringify(statusHistory), activity:stringify([{type:'created',at:now,by:c.get('user')?.id||'guest'}]), adminNotes:'[]', estimatedDeliveryFrom:quote.estimate?new Date(Date.now()+quote.estimate.min*86400000).toISOString():null, estimatedDeliveryTo:quote.estimate?new Date(Date.now()+quote.estimate.max*86400000).toISOString():null, countryCode:country, currency:countryRow.currency, currencySymbol:countryRow.currencySymbol, createdAt:now, updatedAt:now };
   const cols = Object.keys(orderData);
   for (const [i,k] of cols.entries()) { if (orderData[k] === undefined) orderData[k] = null; }
   const statements = [c.env.DB.prepare(`INSERT INTO orders (${cols.join(',')}) VALUES (${cols.map(()=>'?').join(',')})`).bind(...cols.map(k=>orderData[k]))];

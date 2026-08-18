@@ -213,12 +213,20 @@ export default function AdminOrders() {
     {
       key: 'user.name',
       header: t('admin.customer'),
-      render: (o) => (
-        <div className="min-w-0">
-          <p className="clamp-1 text-sm font-medium text-ink">{o.user?.name || '—'}</p>
-          <p className="clamp-1 text-[11px] text-ink-muted">{o.user?.email}</p>
-        </div>
-      ),
+      render: (o) => {
+        const name = o.customerName || o.shippingAddress?.name || o.user?.name || o.guestEmail || '—';
+        const phone = o.customerPhone || o.shippingAddress?.phone || o.guestPhone || o.user?.phone || '';
+        return (
+          <div className="min-w-0">
+            <p className="clamp-1 text-sm font-semibold text-ink">{name}</p>
+            {phone ? (
+              <p dir="ltr" className="clamp-1 font-en text-[11px] text-ink-muted text-start">{phone}</p>
+            ) : (
+              <p className="clamp-1 text-[11px] text-ink-muted">{o.customerEmail || o.user?.email || '—'}</p>
+            )}
+          </div>
+        );
+      },
     },
     { key: 'items', header: t('cart.items'), render: (o) => o.items?.length || 0, hideOnMobile: true },
     { key: 'total', header: t('common.total'), render: (o) => <span className="font-bold text-ink">{formatPrice(o.total, lang)}</span> },
@@ -344,7 +352,7 @@ export default function AdminOrders() {
         selectable
         selected={selected}
         onSelectedChange={setSelected}
-        searchKeys={['orderNumber', 'user.name', 'user.email']}
+        searchKeys={['orderNumber', 'customerName', 'customerPhone', 'customerEmail', 'user.name', 'user.email']}
         emptyIcon={FiShoppingCart}
         emptyTitle={t('a5.empty.orders.title')}
         emptyDescription={t('a5.empty.orders.desc')}

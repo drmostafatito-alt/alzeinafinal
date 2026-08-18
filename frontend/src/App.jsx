@@ -55,9 +55,38 @@ function BackendUnavailable({ onRetry }) {
   );
 }
 
+/**
+ * Gate 1 (F2) — إشعار خفيف قابل للاسترداد عند فشل مؤقت في تحميل الإعدادات
+ * أثناء تشغيل المتجر (مثلاً أثناء تبديل الدولة). قرص صغير أسفل الشاشة بدل
+ * تدمير المتجر كاملاً: آخر نسخة صالحة تبقى معروضة، والمحاولة التلقائية
+ * جارية بالفعل (2s/5s/10s). عند استنفاد المحاولات يظهر زر إعادة يدوي.
+ */
+function ConfigRetryNotice({ state, onRetry }) {
+  const { t } = useI18n();
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className="fixed bottom-4 left-1/2 z-[90] flex -translate-x-1/2 items-center gap-3 rounded-full border border-black/10 bg-white/95 px-4 py-2 text-xs shadow-soft backdrop-blur"
+    >
+      {!state?.exhausted && <FiRefreshCw size={13} className="animate-spin text-ink-muted" />}
+      <span className="text-ink">{state?.exhausted ? t('errors.configRetryFailed') : t('errors.configRetrying')}</span>
+      {state?.exhausted ? (
+        <button
+          type="button"
+          onClick={onRetry}
+          className="rounded-full bg-ink px-3 py-1 font-bold text-white transition hover:bg-rose"
+        >
+          {t('common.retry')}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 export default function App() {
   const refresh = useAuthStore((s) => s.refresh);
-  const { loading, maintenance, settings, configError, reload } = useConfig();
+  const { loading, maintenance, settings, configError, configRetry, reload } = useConfig();
 
   useEffect(() => {
     refresh();
@@ -71,7 +100,12 @@ export default function App() {
   */
   if (loading) return <AppLoader />;
 
-  /* الخادم غير متاح عند الإقلاع — شاشة تشخيص واضحة بدل صفحة بيضاء صامتة */
+  /*
+    الخادم غير متاح — شاشة تشخيص واضحة بدل صفحة بيضاء صامتة.
+    Gate 1 (F1/F2): هذه الشاشة لم تعد تظهر إلا في فشل الإقلاع الأول
+    (لا توجد نسخة إعدادات صالحة إطلاقاً)؛ أما فشل مؤقت أثناء تشغيل
+    المتجر فيُعرض قرص ConfigRetryNotice فوق آخر نسخة صالحة.
+  */
   if (configError) return <BackendUnavailable onRetry={reload} />;
 
   /*
@@ -97,6 +131,7 @@ export default function App() {
     <>
       <ScrollToTop />
       <AppRoutes />
+      {configRetry ? <ConfigRetryNotice state={configRetry} onRetry={reload} /> : null}
     </>
   );
 }

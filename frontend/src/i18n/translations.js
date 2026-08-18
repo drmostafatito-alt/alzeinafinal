@@ -10,6 +10,8 @@ export const translations = {
     /* شاشة الخادم غير المتاح — كانت الحالة تُعرض كصفحة بيضاء صامتة */
     'errors.backendUnavailable': 'تعذر الاتصال بخادم المتجر',
     'errors.backendUnavailableDesc': 'لا يمكن تحميل بيانات المتجر حالياً. يرجى المحاولة مرة أخرى بعد قليل.',
+    'errors.configRetrying': 'جارٍ تحديث بيانات المتجر…',
+    'errors.configRetryFailed': 'تعذّر تحديث بيانات المتجر — تحققي من الاتصال ثم أعيدي المحاولة',
     'common.retry': 'إعادة المحاولة',
     'common.save': 'حفظ',
     'common.saving': 'جاري الحفظ...',
@@ -887,6 +889,8 @@ export const translations = {
     /* Backend-unavailable screen — this state used to render as a silent white page */
     'errors.backendUnavailable': 'Cannot reach the store server',
     'errors.backendUnavailableDesc': 'The store data could not be loaded right now. Please try again in a moment.',
+    'errors.configRetrying': 'Refreshing store data…',
+    'errors.configRetryFailed': 'Could not refresh store data — check your connection and try again',
     'common.retry': 'Try again',
     'common.save': 'Save',
     'common.saving': 'Saving...',

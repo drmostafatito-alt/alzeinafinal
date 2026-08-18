@@ -64,6 +64,21 @@ app.get('/api/v1/csrf-token', (c) => {
   }
   return c.json({ status:'success', data:{ csrfToken:token } });
 });
+
+/* Gate 1 (F3): استجابات JSON العامة المعتمدة على البلد تحمل Vary: X-Country + Cache-Control: no-store.
+   بدون Vary كان أي كاش وسيط (Proxy/Cloudflare/متصفح توفيقي) يستطيع خلط محتوى بلدين على
+   نفس الـURL — أحد التفسيرات المرشّحة لبلاغ «المتجر يفرغ بعد العودة لمصر» (تدقيق Gate 0/RC-2).
+   النطاق = نفس مسارات سياق البلد المعتمدة (products/categories/storefront/cart/orders/coupons).
+   لا يمس /uploads/* (وسائط R2 — سياسة أسبوعية معمول بها) ولا auth/admin ولا Service Worker. */
+const COUNTRY_SCOPED_API = /^\/api\/v1\/(products|categories|storefront|cart|orders|coupons)(\/|$)/;
+app.use('/api/v1/*', async (c, next) => {
+  await next();
+  if (!COUNTRY_SCOPED_API.test(c.req.path)) return;
+  c.res.headers.set('Cache-Control', 'no-store');
+  const vary = c.res.headers.get('Vary');
+  if (!vary) c.res.headers.set('Vary', 'X-Country');
+  else if (!/x-country/i.test(vary)) c.res.headers.set('Vary', `${vary}, X-Country`);
+});
 /* Multi-Country (المرحلة D) — وسيط البلد الوحيد countryMiddleware (src/services/country.js)
    مُركَّب داخل الموجّهات العامة المعتمدة على البلد حصراً: products/categories (catalog.js)،
    storefront/* (content.js)، cart (cart.js)، orders (routes/orders.js).

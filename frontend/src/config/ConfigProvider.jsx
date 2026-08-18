@@ -364,8 +364,28 @@ export function ConfigProvider({ children }) {
   /* الخادم غير متاح عند الإقلاع — كان يُبتلع بصمت فيُعرض المتجر بصفحة بيضاء فارغة.
      نحتفظ بالعلم لعرض شاشة تشخيص واضحة مع زر إعادة محاولة بدل الفراغ الصامت. */
   const [configError, setConfigError] = useState(false);
+  /* Gate 1 (F1): هل توجد نسخة إعدادات صالحة معروضة حالياً؟
+     فشل الإقلاع الأول (لا نسخة إطلاقاً) يُبقي شاشة التشخيص الكاملة كما كانت،
+     أما فشل أثناء تبديل الدولة وتوجد نسخة صالحة فلا يدمّر الواجهة أبداً. */
+  const hasConfigRef = useRef(false);
+  /* مؤشر خفيف قابل للاسترداد أثناء فشل مؤقت (بدل شاشة الموت) — يستهلكه App.jsx */
+  const [configRetry, setConfigRetry] = useState(null); // null | { attempt:number, exhausted:boolean }
+  /* مهلة تصاعدية مقيدة: ثانيتان/خمس/عشر — 3 محاولات كحد أقصى ثم إشعار يدوي قابل للاسترداد */
+  const RETRY_BACKOFF = [2000, 5000, 10000];
+  const retryRef = useRef({ attempts: 0, timer: null });
+  const doLoadRef = useRef(null);
+  /* مرآة حية لآخر نسخة config (الارجاع إليها عند استنفاد المحاولات) — بلا إعادة رسم */
+  const configRef = useRef(FALLBACK);
+  configRef.current = { ...config };
 
-  const load = useCallback(async () => {
+  const doLoad = useCallback(async (fromRetry) => {
+    /* تحميل جديد بطلب المستخدم/التبديل: يلغي أي محاولة تلقائية معلّقة ويصفّر العدّاد */
+    if (!fromRetry) {
+      clearTimeout(retryRef.current.timer);
+      retryRef.current.timer = null;
+      retryRef.current.attempts = 0;
+      setConfigRetry(null);
+    }
     const my = ++genRef.current;
     try {
       const res = await client.get('/storefront/config');
@@ -393,6 +413,12 @@ export function ConfigProvider({ children }) {
         setConfig({ ...FALLBACK, ...data, settings: { ...FALLBACK.settings, ...data.settings } });
         setMaintenance(null);
         setConfigError(false);
+        /* نسخة صالحة صارت معروضة — أي فشل لاحق أثناء تبديل يُعامل كـ«مؤقت» */
+        hasConfigRef.current = true;
+        clearTimeout(retryRef.current.timer);
+        retryRef.current.timer = null;
+        retryRef.current.attempts = 0;
+        setConfigRetry(null);
         /**
          * قائمة الدول النشطة عند الخادم هي المرجع الوحيد المقبول
          * (countryStore). أي دولة محفوظة محلياً وغير موجودة هنا تُسقَط
@@ -408,15 +434,42 @@ export function ConfigProvider({ children }) {
         setMaintenance(err.response.data.message);
         setConfigError(false);
       } else if (!err?.response || err.code === 'ECONNABORTED' || err.code === 'ERR_NETWORK' || err.response?.status >= 500) {
-        /* الخادم غير قابل للوصول (متعطّل/بطيء) — نُظهر شاشة واضحة بدل صفحة بيضاء */
-        setConfigError(true);
+        if (!hasConfigRef.current) {
+          /* إقلاع أول بلا أي نسخة صالحة — شاشة التشخيص الكاملة تبقى كما كانت (سلوك معتمد) */
+          setConfigError(true);
+        } else {
+          /* Gate 1 (F1): فشل مؤقت أثناء تبديل — لا نصف-دولة أبداً.
+             أثناء المحاولات التلقائية نُبقي شاشة التحميل الكاملة (حالة مقصودة)،
+             وعند استنفادها نرجع إلى آخر بلد كانت إعداداته صالحة بالفعل
+             ⇒ المتجر يظهر دائماً إما حالة تحميل، أو آخر حالة مكتملة، أو الحالة الجديدة كاملة. */
+          const r = retryRef.current;
+          setLoading(true);
+          if (r.attempts < RETRY_BACKOFF.length) {
+            const wait = RETRY_BACKOFF[r.attempts];
+            r.attempts += 1;
+            setConfigRetry({ attempt: r.attempts, exhausted: false });
+            clearTimeout(r.timer);
+            /* عند إطلاق المؤقّت نصفّر المقبض فوراً — وإلا بقي مقبضاً قديماً بعد آخر محاولة
+               فيمنع finally من إطفاء شاشة التحميل إلى الأبد عند الاستنفاد (اكتشفه سيناريو الانقطاع الكامل S5c) */
+            r.timer = setTimeout(() => { r.timer = null; if (genRef.current === my) doLoadRef.current?.(true); }, wait);
+          } else {
+            /* استُنفدت المحاولات: تراجع صامت لآخر بلد مطبّق + إشعار خفيف يدوي قابل للاسترداد */
+            const appliedCode = configRef.current?.country?.code;
+            if (appliedCode && useCountryStore.getState().country !== appliedCode) {
+              useCountryStore.setState({ country: appliedCode, explicit: true });
+            }
+            setConfigRetry({ attempt: r.attempts, exhausted: true });
+          }
+        }
       }
       // نُبقي القيم الافتراضية حتى لا تنهار الواجهة
     } finally {
-      /* تحميل أحدث ما زال جارياً؟ لا نطفئ شاشة الانتظار قبله */
-      if (my === genRef.current) setLoading(false);
+      /* مؤقّت إعادة محاولة قائم ⇒ نُبقي شاشة التحميل حتى يحسم أحدث تحميل مصيره */
+      if (my === genRef.current && !retryRef.current.timer) setLoading(false);
     }
   }, []);
+  doLoadRef.current = doLoad;
+  const load = useCallback(() => doLoad(false), [doLoad]);
 
   useEffect(() => {
     load();
@@ -482,6 +535,8 @@ export function ConfigProvider({ children }) {
       loading,
       maintenance,
       configError,
+      /* Gate 1 (F2): فشل مؤقت أثناء تبديل — الواجهة تعرض إشعاراً خفيفاً قابلاً للاسترداد */
+      configRetry,
       reload: load,
       applyHead: (lang) => applyHead(config.settings, lang),
       /** بحث سريع عن محافظة */
@@ -489,7 +544,7 @@ export function ConfigProvider({ children }) {
       /** هل الميزة مفعّلة */
       feature: (key) => Boolean(config.settings.features?.[key])
     }),
-    [config, loading, maintenance, configError, load]
+    [config, loading, maintenance, configError, configRetry, load]
   );
 
   return <ConfigContext.Provider value={value}>{children}</ConfigContext.Provider>;

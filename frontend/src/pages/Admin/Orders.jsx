@@ -63,12 +63,26 @@ export default function AdminOrders() {
   const openDoc = async (orderId, kind) => {
     try {
       const res = await client.get(`/admin/orders/${orderId}/${kind}`, { responseType: 'blob' });
-      const url = URL.createObjectURL(res.data);
+      const ct = String(res.headers?.['content-type'] || '');
+      if (ct.includes('json') || (res.data?.type && res.data.type.includes('json'))) {
+        toast.error(t('common.error'));
+        return;
+      }
+      const blob = res.data instanceof Blob ? res.data : new Blob([res.data], { type: 'text/html;charset=utf-8' });
+      const htmlBlob = blob.type.includes('html') ? blob : new Blob([await blob.text()], { type: 'text/html;charset=utf-8' });
+      const url = URL.createObjectURL(htmlBlob);
       window.open(url, '_blank', 'noopener');
       setTimeout(() => URL.revokeObjectURL(url), 60000);
     } catch {
       toast.error(t('common.error'));
     }
+  };
+
+  const money = (order, amount) => {
+    const fin = order?.financialSnapshot || {};
+    const ae = fin.country === 'AE' || fin.currency === 'AED';
+    const sym = fin.currencySymbol || (ae ? 'د.إ' : 'ج.م');
+    return `${amount ?? order?.total ?? 0} ${sym}`;
   };
 
   const { data, isLoading } = useQuery({ queryKey: ['admin', 'orders'], queryFn: adminService.orders.list });
@@ -229,7 +243,7 @@ export default function AdminOrders() {
       },
     },
     { key: 'items', header: t('cart.items'), render: (o) => o.items?.length || 0, hideOnMobile: true },
-    { key: 'total', header: t('common.total'), render: (o) => <span className="font-bold text-ink">{formatPrice(o.total, lang)}</span> },
+    { key: 'total', header: t('common.total'), render: (o) => <span className="font-bold text-ink">{money(o, o.total)}</span> },
     {
       key: 'paymentStatus',
       header: t('orders.paymentMethod'),
@@ -557,11 +571,11 @@ export default function AdminOrders() {
                   ) : null}
                 </div>
                 <p className="text-sm font-semibold text-ink">
-                  {viewing.shippingAddress?.name || viewing.user?.name || viewing.guestEmail || '—'}
+                  {viewing.customerName || viewing.shippingAddress?.name || viewing.guestEmail || 'عميل المتجر'}
                 </p>
-                <p className="text-xs text-ink-muted">{viewing.user?.email || viewing.guestEmail || '—'}</p>
+                <p className="text-xs text-ink-muted">{viewing.customerEmail || viewing.guestEmail || viewing.user?.email || '—'}</p>
                 <p dir="ltr" className="mt-1 text-xs font-bold text-ink text-start">
-                  📞 {viewing.shippingAddress?.phone || viewing.guestPhone || viewing.user?.phone || '—'}
+                  📞 {viewing.customerPhone || viewing.shippingAddress?.phone || viewing.guestPhone || '—'}
                 </p>
               </div>
               <div className="rounded-xl bg-cream p-4">
@@ -573,19 +587,24 @@ export default function AdminOrders() {
                       : '🇪🇬 مصر'}
                   </Badge>
                 </div>
-                <p className="text-xs leading-relaxed text-ink-soft">
+                <dl className="space-y-1 text-xs text-ink">
                   {[
-                    viewing.shippingAddress?.street,
-                    viewing.shippingAddress?.buildingNumber ? `مبنى ${viewing.shippingAddress.buildingNumber}` : null,
-                    viewing.shippingAddress?.floor ? `طابق ${viewing.shippingAddress.floor}` : null,
-                    viewing.shippingAddress?.apartment ? `شقة ${viewing.shippingAddress.apartment}` : null,
-                    viewing.shippingAddress?.district,
-                    viewing.shippingAddress?.city,
-                    viewing.shippingAddress?.governorateName || viewing.shippingAddress?.governorate
-                  ]
-                    .filter(Boolean)
-                    .join('، ') || '—'}
-                </p>
+                    ['الدولة', viewing.financialSnapshot?.country === 'AE' || viewing.shippingAddress?.countryCode === 'AE' ? '🇦🇪 الإمارات' : '🇪🇬 مصر'],
+                    ['المحافظة / الإمارة', viewing.shippingAddress?.governorateName || viewing.shippingAddress?.governorate || '—'],
+                    ['المدينة', viewing.shippingAddress?.city || '—'],
+                    ['الحي', viewing.shippingAddress?.district || '—'],
+                    ['الشارع', viewing.shippingAddress?.street || '—'],
+                    ['المبنى', viewing.shippingAddress?.buildingNumber || '—'],
+                    ['الطابق', viewing.shippingAddress?.floor || '—'],
+                    ['الشقة', viewing.shippingAddress?.apartment || '—'],
+                    ['الرمز البريدي', viewing.shippingAddress?.postalCode || '—'],
+                  ].map(([k, v]) => (
+                    <div key={k} className="flex justify-between gap-3">
+                      <dt className="text-ink-muted">{k}</dt>
+                      <dd className="font-semibold text-end">{v}</dd>
+                    </div>
+                  ))}
+                </dl>
                 {viewing.shippingAddress?.notes ? (
                   <p className="mt-2 text-[11px] font-medium text-amber-800">
                     ملاحظات: {viewing.shippingAddress.notes}
@@ -616,16 +635,16 @@ export default function AdminOrders() {
             <dl className="space-y-2 rounded-xl bg-cream p-4 text-sm">
               <div className="flex justify-between">
                 <dt className="text-ink-muted">{t('cart.subtotal')}</dt>
-                <dd className="font-semibold">{formatPrice(viewing.subtotal, lang)}</dd>
+                <dd className="font-semibold">{money(viewing, viewing.subtotal)}</dd>
               </div>
               <div className="flex justify-between">
                 <dt className="text-ink-muted">{t('cart.shipping')}</dt>
-                <dd className="font-semibold">{formatPrice(viewing.shippingCost, lang)}</dd>
+                <dd className="font-semibold">{money(viewing, viewing.shippingCost)}</dd>
               </div>
               {viewing.couponDiscount > 0 ? (
                 <div className="flex justify-between text-emerald-600">
                   <dt>{t('cart.discount')}</dt>
-                  <dd className="font-semibold">− {formatPrice(viewing.couponDiscount, lang)}</dd>
+                  <dd className="font-semibold">− {money(viewing, viewing.couponDiscount)}</dd>
                 </div>
               ) : null}
               <div className="flex justify-between border-t border-black/10 pt-2">

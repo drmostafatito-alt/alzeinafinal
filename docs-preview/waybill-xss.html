@@ -1,0 +1,89 @@
+<!doctype html>
+<html dir="rtl" lang="ar">
+<head>
+  <meta charset="utf-8">
+  <title>بوليصة شحن AZ-XSS-1</title>
+  <style>
+    
+  @page { size: A4; margin: 12mm; }
+  * { box-sizing: border-box; }
+  body { font-family: 'Segoe UI', Tahoma, Arial, Helvetica, sans-serif; margin: 0; padding: 16px; background: #ece8e4; color: #111; }
+  .sheet { max-width: 210mm; margin: 0 auto; background: #fff; padding: 22px 26px; border: 1px solid #ddd; }
+  .no-print { }
+  @media print {
+    body { background: #fff; padding: 0; }
+    .sheet { border: none; max-width: none; padding: 0; box-shadow: none; }
+    .no-print { display: none !important; }
+    nav, header.admin, .admin-nav, button, .btn { display: none !important; }
+  }
+
+    .wb { border: 3px solid #111; padding: 16px 18px; }
+    .top { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #111; padding-bottom: 10px; margin-bottom: 12px; }
+    .store { font-size: 28px; font-weight: 900; }
+    .onum { font-size: 26px; font-weight: 900; font-family: ui-monospace, Menlo, Consolas, monospace; letter-spacing: 1px; }
+    .flag { font-size: 18px; font-weight: 800; }
+    .banner { padding: 14px; text-align: center; font-size: 18px; font-weight: 900; border-radius: 8px; margin: 10px 0 14px; }
+    .pay-cod { background: #fee2e2; color: #7f1d1d; border: 3px solid #dc2626; }
+    .pay-ok { background: #dcfce7; color: #14532d; border: 3px solid #16a34a; }
+    .pay-review { background: #ffedd5; color: #7c2d12; border: 3px solid #ea580c; }
+    .who { background: #111; color: #fff; padding: 14px 16px; border-radius: 8px; margin-bottom: 12px; }
+    .who .name { font-size: 24px; font-weight: 900; }
+    .who .phone { font-size: 22px; font-weight: 900; direction: ltr; display: inline-block; font-family: ui-monospace, Menlo, Consolas, monospace; }
+    .dest { border: 2px solid #111; padding: 12px 14px; }
+    .dest h3 { margin: 0 0 8px; font-size: 13px; }
+    .dest .line { font-size: 15px; margin: 4px 0; }
+    .dest .big { font-size: 17px; font-weight: 800; }
+    table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 14px; }
+    th { text-align: right; border-bottom: 2px solid #111; padding: 6px; }
+    td { padding: 6px; border-bottom: 1px solid #ddd; }
+    .num { text-align: left; }
+    .btn { background: #111; color: #fff; border: 0; padding: 10px 18px; border-radius: 999px; font-weight: 700; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <div class="sheet">
+    <div class="wb">
+      <div class="top">
+        <div>
+          <div class="store">الزينة — AL ZEINA</div>
+          <div>بوليصة شحن / Shipping Waybill</div>
+        </div>
+        <div style="text-align:left;">
+          <div class="flag">🇪🇬 مصر</div>
+          <div>رقم الطلب</div>
+          <div class="onum">AZ-XSS-1</div>
+        </div>
+      </div>
+
+      <div class="banner pay-cod">
+        الدفع عند الاستلام<br>
+        <span style="font-size:20px;">المبلغ المطلوب تحصيله: 900 ج.م</span>
+      </div>
+
+      <div class="who">
+        <div>المستلم</div>
+        <div class="name">&lt;img src=x onerror=alert(1)&gt;</div>
+        <div>هاتف / واتساب: <span class="phone">0100</span></div>
+      </div>
+
+      <div class="dest">
+        <h3>عنوان التسليم الكامل</h3>
+        <div class="line big">الدولة: جمهورية مصر العربية — المحافظة: القاهرة</div>
+        <div class="line">المدينة: <strong>Cairo</strong> · الحي: <strong>—</strong></div>
+        <div class="line big">الشارع: &lt;script&gt;alert(1)&lt;/script&gt;</div>
+        <div class="line">المبنى: — · الطابق: — · الشقة: — · الرمز البريدي: —</div>
+        <div class="line" style="color:#9a3412;">ملاحظات التوصيل: &lt;b&gt;hack&lt;/b&gt;</div>
+      </div>
+
+      <table>
+        <thead><tr><th>محتويات الشحنة</th><th>SKU</th><th>الكمية</th></tr></thead>
+        <tbody><tr><td>&lt;svg onload=alert(1)&gt;</td><td class="mono">X</td><td class="num"><strong>×1</strong></td></tr></tbody>
+      </table>
+      
+    </div>
+    <div class="no-print" style="text-align:center;margin-top:14px;">
+      <button class="btn" onclick="window.print()">طباعة البوليصة / حفظ PDF</button>
+    </div>
+  </div>
+</body>
+</html>

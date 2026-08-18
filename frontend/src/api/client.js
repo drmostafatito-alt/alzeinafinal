@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { STORAGE_KEYS } from '@/utils/constants';
 import { readStorage, removeStorage } from '@/utils/helpers';
+import { useCountryStore, DEFAULT_COUNTRY } from '@/store/countryStore';
 
 export const API_BASE = import.meta.env.VITE_API_URL || '/api/v1';
 
@@ -10,6 +11,29 @@ const client = axios.create({
   withCredentials: true,
   headers: { 'Content-Type': 'application/json' },
 });
+
+/**
+ * المسارات التي يحكمها سياق الدولة (Phase D): الكتالوج، واجهة المتجر،
+ * السلة، الطلبات، والكوبونات. أي مسار آخر — auth/admin/users/uploads/
+ * csrf — لا يرى X-Country إطلاقاً. الترويسة «اقتراح» والخادم authority.
+ */
+const COUNTRY_PATHS = /^\/(products|categories|storefront|cart|orders|coupons)(\/|\?|$)/;
+
+const isCountryPath = (url = '') => {
+  const path = String(url).replace(/^https?:\/\/[^/]+/i, '');
+  const rel = path.startsWith(API_BASE) ? path.slice(API_BASE.length) : path;
+  return COUNTRY_PATHS.test(rel);
+};
+
+/** لا تخرج أي قيمة غير نشطة عن الواجهة — المتجر غير الجاهز/التالف ⇒ EG */
+const resolveCountryHeader = () => {
+  try {
+    const { country, activeCodes } = useCountryStore.getState();
+    return activeCodes.includes(country) ? country : DEFAULT_COUNTRY;
+  } catch {
+    return DEFAULT_COUNTRY;
+  }
+};
 
 /** يقرأ قيمة كوكي غير httpOnly */
 const readCookie = (name) => {
@@ -22,6 +46,11 @@ const UNSAFE = ['post', 'put', 'patch', 'delete'];
 client.interceptors.request.use(async (config) => {
   const token = readStorage(STORAGE_KEYS.token);
   if (token) config.headers.Authorization = `Bearer ${token}`;
+
+  // سياق الدولة للطلبات التي تعتمد عليه فقط (whitelist صارم)
+  if (isCountryPath(config.url)) {
+    config.headers['X-Country'] = resolveCountryHeader();
+  }
 
   // الخادم يطبّق double-submit CSRF على الطلبات المغيّرة للحالة
   if (UNSAFE.includes(String(config.method).toLowerCase())) {

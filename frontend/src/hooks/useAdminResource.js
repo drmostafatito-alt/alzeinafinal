@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-toastify';
 import { useI18n } from '@/i18n';
+import { useConfig } from '@/config/ConfigProvider';
 
 /**
  * يوفّر كل ما تحتاجه صفحة إدارة: جلب + إنشاء + تعديل + حذف + حالة المودال.
@@ -15,6 +16,14 @@ export function useAdminResource(name, service, dataKey, relatedKeys = []) {
   const { t } = useI18n();
   const qc = useQueryClient();
   const key = ['admin', name];
+
+  let reloadConfig;
+  try {
+    const configCtx = useConfig();
+    reloadConfig = configCtx?.reload;
+  } catch {
+    /* خارج ConfigProvider في بعض سيناريوهات الاختبار */
+  }
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -47,6 +56,9 @@ export function useAdminResource(name, service, dataKey, relatedKeys = []) {
     qc.invalidateQueries({ queryKey: [name] });
     // مفاتيح واجهة المتجر المرتبطة بهذا المورد (مطابقة بالبادئة)
     for (const k of relatedKeys) qc.invalidateQueries({ queryKey: [k] });
+    if (name === 'banners' || name === 'home-sections' || relatedKeys.includes('banners') || relatedKeys.includes('storefront')) {
+      reloadConfig?.();
+    }
   };
 
   const createMutation = useMutation({

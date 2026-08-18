@@ -17,6 +17,7 @@ import ImagePicker from '@/components/admin/ImagePicker';
 import EmptyState from '@/components/ui/EmptyState';
 import { TableSkeleton } from '@/components/ui/Skeleton';
 import { useCategories } from '@/hooks';
+import { useConfig } from '@/config/ConfigProvider';
 import { cn, localized } from '@/utils/helpers';
 
 registerExtraTranslations('pageBuilder', pageBuilderTranslations);
@@ -74,6 +75,7 @@ const numberField = (v, fb = '') => (v === '' || v === undefined || v === null ?
 export default function AdminPageBuilder() {
   const { t, lang } = useI18n();
   const qc = useQueryClient();
+  const { reload: reloadConfig } = useConfig();
   const { categories } = useCategories();
 
   const [sections, setSections] = useState([]);
@@ -109,6 +111,7 @@ export default function AdminPageBuilder() {
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ['admin', 'home-sections'] });
     qc.invalidateQueries({ queryKey: ['storefront', 'config'] });
+    reloadConfig?.();
   };
 
   const bumpPreview = () => setPreviewKey((k) => k + 1);

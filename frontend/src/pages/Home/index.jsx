@@ -63,7 +63,7 @@ export default function Home() {
     return list
       .filter((s) => s && s.isActive !== false)
       .slice()
-      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+      .sort((a, b) => (a.order ?? a.sortOrder ?? 0) - (b.order ?? b.sortOrder ?? 0));
   }, [dbSections]);
 
   /* Gate 3B: «المتجر فارغ» تُحسم من كتالوج البلد المحسوم خادمياً نفسه،

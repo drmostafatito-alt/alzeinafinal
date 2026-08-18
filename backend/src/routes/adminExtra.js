@@ -108,7 +108,10 @@ app.get('/orders/:id/invoice', adminOrModerator, async c => {
   const order = await serializeOrder(c.env, row);
   const settings = await getSettings(c.env);
   const html = invoiceHtml(order, settings);
-  return c.html(html, 200, { 'Content-Type': 'text/html; charset=utf-8' });
+  return c.html(html, 200, {
+    'Content-Type': 'text/html; charset=utf-8',
+    'Cache-Control': 'no-store, no-cache, must-revalidate, private'
+  });
 });
 
 app.get('/orders/:id/label', adminOrModerator, async c => {
@@ -201,7 +204,10 @@ app.get('/orders/:id/label', adminOrModerator, async c => {
 </body>
 </html>`;
 
-  return c.html(html, 200, { 'Content-Type': 'text/html; charset=utf-8' });
+  return c.html(html, 200, {
+    'Content-Type': 'text/html; charset=utf-8',
+    'Cache-Control': 'no-store, no-cache, must-revalidate, private'
+  });
 });
 app.put('/orders/:id/status', adminOrModerator, async c => { const b=await c.req.json(), o=await first(c.env.DB.prepare('SELECT * FROM orders WHERE id=?').bind(c.req.param('id'))); const hist=parseJson(o.statusHistory,[]); hist.push({status:b.status||b.orderStatus,at:nowIso(),note:b.note,by:c.get('user')?.id}); await run(c.env.DB.prepare('UPDATE orders SET orderStatus=?,statusHistory=?,updatedAt=? WHERE id=?').bind(b.status||b.orderStatus,stringify(hist),nowIso(),o.id)); return ok(c,{message:'updated'}); });
 app.put('/orders/:id/shipping', adminOrModerator, async c => { const b=await c.req.json(); await run(c.env.DB.prepare('UPDATE orders SET trackingNumber=?,shippingCompany=?,updatedAt=? WHERE id=?').bind(b.trackingNumber,b.shippingCompany,nowIso(),c.req.param('id'))); return ok(c,{message:'updated'}); });

@@ -52,8 +52,9 @@ async function canPreview(c) {
   const auth = c.req.header('authorization') || c.req.header('Authorization') || '';
   if (!auth.startsWith('Bearer')) return false;
   try {
-    const secret = c.env.JWT_SECRET || 'dev-secret-change-me';
-    const payload = await verifyJwt(auth.split(' ')[1], secret);
+    const secret = c.env.JWT_SECRET;
+    if ((c.env.ENVIRONMENT || 'development') === 'production' && (!secret || secret.length < 16)) return false;
+    const payload = await verifyJwt(auth.split(' ')[1], secret || 'dev-secret-change-me');
     if (!payload) return false;
     const u = await first(c.env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(payload.id));
     return Boolean(u && ['admin','moderator'].includes(u.role));

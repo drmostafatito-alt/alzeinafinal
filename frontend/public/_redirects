@@ -1,0 +1,6 @@
+/* /api and /uploads are served by the AL-ZEINA Worker.
+   Everything else falls back to index.html for the React SPA. */
+/api/*  https://al-zeina-api.YOUR-SUBDOMAIN.workers.dev/api/:splat  200
+/uploads/* https://al-zeina-api.YOUR-SUBDOMAIN.workers.dev/uploads/:splat 200
+
+/* /index.html 200

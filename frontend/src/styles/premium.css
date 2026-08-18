@@ -1,0 +1,565 @@
+/* Premium cosmetics design system — theme variables and polished storefront treatments.
+   This file intentionally uses CSS only to avoid extra runtime dependencies. */
+
+:root {
+  /*
+    نظام الخطوط:
+    --font-heading-ar / --font-heading-en يضبطهما الثيم (اختيارياً) من
+    ConfigProvider؛ وإلا يرثان خط النص لنفس اللغة. التبديل بين اللغتين
+    يتم هنا حسب dir — لا من JavaScript — حتى لا يفرض خط لغة على الأخرى.
+  */
+  --font-heading-ar: var(--font-ar);
+  --font-heading-en: var(--font-en);
+  --font-heading: var(--font-heading-ar);
+  --font-body: var(--font-ar);
+  --font-nav: var(--font-ar);
+  --font-button: var(--font-ar);
+  --font-price: var(--font-en);
+  --font-promo: var(--font-ar);
+  --card-radius: calc(var(--radius-base) + 4px);
+  --card-shadow: var(--shadow-sm);
+  --card-shadow-hover: var(--shadow-lg);
+  --section-y: clamp(40px, 6vw, 88px);
+  --btn-radius: 999px;
+  --btn-padding-y: .82rem;
+  --btn-padding-x: 1.55rem;
+  --header-height: 72px;
+  --marquee-duration: 28s;
+  --heading-tracking: -.035em;
+  --heading-weight: 700;
+  --nav-transform: none;
+  --nav-tracking: .01em;
+}
+html[dir='ltr'] {
+  --font-heading: var(--font-heading-en);
+  --font-body: var(--font-en);
+  --font-nav: var(--font-en);
+  --font-button: var(--font-en);
+}
+
+/* ============================================================
+   Premium theme presets — كل ثيم نظام تصميم متكامل:
+   ألوان + مطبعة (تتبع/وزن/تحويل) + حواف + ظلال + إيقاع مساحات + أزرار.
+   الألوان الأساسية تأتي من D1 عبر ConfigProvider؛ هنا "شخصية" الثيم.
+   ============================================================ */
+
+/* 1) Luxury Nude — دفء عاجي، Serif إنجليزي فخم، ظلال ناعمة عميقة */
+html[data-theme-preset='luxury-nude'] {
+  --color-ink:#2a211b; --color-rose:#b9916e; --color-cream:#fbf5ed; --color-blush:#f1e3d2; --color-surface:#fffdf9;
+  --rgb-ink:42 33 27; --rgb-rose:185 145 110; --rgb-cream:251 245 237; --rgb-blush:241 227 210; --rgb-surface:255 253 249;
+  --color-text-muted:#75695f; --color-price:#a67950; --color-promo-bg:#b9916e; --color-promo-text:#fffaf2;
+  --color-card-border:rgb(42 33 27 / 9%); --radius-base:1.25rem; --card-radius:1.5rem;
+  --heading-tracking:-.02em; --heading-weight:600;
+  --card-shadow:0 2px 18px rgb(42 33 27 / 6%); --card-shadow-hover:0 22px 48px rgb(42 33 27 / 14%);
+  --btn-radius:14px; --btn-padding-y:.9rem; --btn-padding-x:1.9rem;
+  --section-y:clamp(48px,7vw,104px); --marquee-duration:34s;
+}
+html[data-theme-preset='luxury-nude'][dir='ltr'] h1,
+html[data-theme-preset='luxury-nude'][dir='ltr'] h2 { font-style:normal; letter-spacing:-.015em; }
+
+/* 2) Rose Gold — أنثوي دائري بالكامل، حواف حبّة، ظل وردي متوهج */
+html[data-theme-preset='rose-gold'] {
+  --color-ink:#332026; --color-rose:#c98996; --color-cream:#fff7f7; --color-blush:#f8e2e6; --color-surface:#ffffff;
+  --rgb-ink:51 32 38; --rgb-rose:201 137 150; --rgb-cream:255 247 247; --rgb-blush:248 226 230; --rgb-surface:255 255 255;
+  --color-text-muted:#7b6269; --color-price:#c27182; --color-promo-bg:#c98996; --color-promo-text:#ffffff;
+  --radius-base:1.35rem; --card-radius:1.75rem;
+  --heading-tracking:-.03em; --heading-weight:700;
+  --card-shadow:0 4px 22px rgb(201 137 150 / 12%); --card-shadow-hover:0 26px 56px rgb(201 137 150 / 24%);
+  --btn-radius:999px; --btn-padding-y:.85rem; --btn-padding-x:1.7rem;
+  --section-y:clamp(44px,6.5vw,96px); --marquee-duration:26s;
+}
+
+/* 3) Black Luxury — داكن عالي التباين، ذهب شامبانيا، حواف حادة نسبياً */
+html[data-theme-preset='black-luxury'] {
+  --color-ink:#f8f1e6; --color-rose:#d4b06a; --color-cream:#11100f; --color-blush:#1d1a17; --color-surface:#171513;
+  --rgb-ink:248 241 230; --rgb-rose:212 176 106; --rgb-cream:17 16 15; --rgb-blush:29 26 23; --rgb-surface:23 21 19;
+  --color-text-muted:#b9aa99; --color-heading:#fff8ea; --color-price:#d4b06a; --color-promo-bg:#d4b06a; --color-promo-text:#15110c;
+  --color-card-border:rgb(255 255 255 / 10%); --color-border:rgb(255 255 255 / 16%); --color-btn-bg:#d4b06a; --color-btn-text:#15110c; --color-btn-hover-bg:#e3c388;
+  --radius-base:.75rem; --card-radius:1rem;
+  --heading-tracking:.01em; --heading-weight:600;
+  --card-shadow:0 1px 0 rgb(255 255 255 / 5%) inset, 0 10px 30px rgb(0 0 0 / 45%);
+  --card-shadow-hover:0 1px 0 rgb(255 255 255 / 8%) inset, 0 24px 60px rgb(0 0 0 / 60%);
+  --btn-radius:10px; --btn-padding-y:.95rem; --btn-padding-x:2rem;
+  --nav-transform:uppercase; --nav-tracking:.14em;
+  --section-y:clamp(56px,8vw,120px); --marquee-duration:38s;
+}
+html[data-theme-preset='black-luxury'] .premium-card:hover { border-color:rgb(212 176 106 / 40%); }
+
+/* 4) Clean Beauty — طبيعي هادئ، مساحات واسعة، حواف حبّة كاملة، بلا ظلال تقريباً */
+html[data-theme-preset='clean-beauty'] {
+  --color-ink:#232521; --color-rose:#91a379; --color-cream:#fbf9f3; --color-blush:#eef0e5; --color-surface:#ffffff;
+  --rgb-ink:35 37 33; --rgb-rose:145 163 121; --rgb-cream:251 249 243; --rgb-blush:238 240 229; --rgb-surface:255 255 255;
+  --color-text-muted:#6f756a; --color-price:#657750; --color-promo-bg:#91a379; --color-promo-text:#ffffff;
+  --radius-base:1.6rem; --card-radius:2rem;
+  --heading-tracking:-.025em; --heading-weight:600;
+  --card-shadow:none; --card-shadow-hover:0 14px 34px rgb(35 37 33 / 8%);
+  --btn-radius:999px; --btn-padding-y:.8rem; --btn-padding-x:1.6rem;
+  --section-y:clamp(56px,8.5vw,120px); --marquee-duration:32s;
+}
+html[data-theme-preset='clean-beauty'] .premium-card { border-width:1.5px; }
+
+/* 5) Soft Pink — عصري مرح، ظل وردي واضح، حركة أسرع */
+html[data-theme-preset='soft-pink'] {
+  --color-ink:#3d2730; --color-rose:#df8aa5; --color-cream:#fff8fb; --color-blush:#ffe8f0; --color-surface:#ffffff;
+  --rgb-ink:61 39 48; --rgb-rose:223 138 165; --rgb-cream:255 248 251; --rgb-blush:255 232 240; --rgb-surface:255 255 255;
+  --color-text-muted:#846976; --color-price:#d36689; --color-promo-bg:#df8aa5; --color-promo-text:#ffffff;
+  --radius-base:1.45rem; --card-radius:1.75rem;
+  --heading-tracking:-.04em; --heading-weight:800;
+  --card-shadow:0 6px 20px rgb(223 138 165 / 14%); --card-shadow-hover:0 22px 46px rgb(223 138 165 / 26%);
+  --btn-radius:999px; --btn-padding-y:.82rem; --btn-padding-x:1.6rem;
+  --section-y:clamp(40px,6vw,84px); --marquee-duration:20s;
+}
+
+/* 6) Burgundy Luxury — كلاسيكي ملكي، Serif، حواف صغيرة، ظل نبيذي */
+html[data-theme-preset='burgundy-luxury'] {
+  --color-ink:#2d1217; --color-rose:#7b1e2f; --color-cream:#fbf2e5; --color-blush:#f1dfc8; --color-surface:#fffaf4;
+  --rgb-ink:45 18 23; --rgb-rose:123 30 47; --rgb-cream:251 242 229; --rgb-blush:241 223 200; --rgb-surface:255 250 244;
+  --color-link:#7b1e2f; --color-btn-bg:#7b1e2f; --color-btn-text:#fff6ec; --color-btn-hover-bg:#9a293c;
+  --color-text-muted:#75635b; --color-price:#7b1e2f; --color-promo-bg:#7b1e2f; --color-promo-text:#f6ddb3;
+  --radius-base:.6rem; --card-radius:.85rem;
+  --heading-tracking:-.01em; --heading-weight:600;
+  --card-shadow:0 2px 14px rgb(123 30 47 / 8%); --card-shadow-hover:0 18px 44px rgb(123 30 47 / 18%);
+  --btn-radius:8px; --btn-padding-y:.9rem; --btn-padding-x:1.9rem;
+  --nav-transform:uppercase; --nav-tracking:.1em;
+  --section-y:clamp(48px,7vw,104px); --marquee-duration:34s;
+}
+
+/* 7) Modern Gold — تحريري معاصر، ذهب دافئ على عاجي، أزرار مستطيلة أنيقة */
+html[data-theme-preset='modern-gold'] {
+  --color-ink:#201c18; --color-rose:#c59b4f; --color-cream:#fbf7ee; --color-blush:#efe3cc; --color-surface:#fffdf8;
+  --rgb-ink:32 28 24; --rgb-rose:197 155 79; --rgb-cream:251 247 238; --rgb-blush:239 227 204; --rgb-surface:255 253 248;
+  --color-text-muted:#74695b; --color-price:#a97d36; --color-promo-bg:#201c18; --color-promo-text:#e4c078;
+  --radius-base:.85rem; --card-radius:1.1rem;
+  --heading-tracking:-.015em; --heading-weight:600;
+  --card-shadow:0 1px 10px rgb(32 28 24 / 6%); --card-shadow-hover:0 20px 44px rgb(32 28 24 / 14%);
+  --btn-radius:6px; --btn-padding-y:.95rem; --btn-padding-x:2.1rem;
+  --nav-transform:uppercase; --nav-tracking:.12em;
+  --section-y:clamp(52px,7.5vw,112px); --marquee-duration:30s;
+}
+
+/* 8) Minimal Editorial — أحادي صارم، زوايا شبه حادة، طباعة كبيرة وضيقة */
+html[data-theme-preset='minimal-editorial'] {
+  --color-ink:#111111; --color-rose:#111111; --color-cream:#ffffff; --color-blush:#f6f4f0; --color-surface:#ffffff;
+  --rgb-ink:17 17 17; --rgb-rose:17 17 17; --rgb-cream:255 255 255; --rgb-blush:246 244 240; --rgb-surface:255 255 255;
+  --color-text-muted:#666666; --color-price:#111111; --color-promo-bg:#111111; --color-promo-text:#ffffff;
+  --radius-base:0; --card-radius:0;
+  --heading-tracking:-.05em; --heading-weight:700;
+  --card-shadow:none; --card-shadow-hover:none;
+  --btn-radius:0; --btn-padding-y:1rem; --btn-padding-x:2.2rem;
+  --nav-transform:uppercase; --nav-tracking:.16em;
+  --section-y:clamp(64px,9vw,140px); --marquee-duration:40s;
+}
+html[data-theme-preset='minimal-editorial'] .premium-card { border-width:1px; border-color:rgb(17 17 17 / 18%); }
+html[data-theme-preset='minimal-editorial'] .premium-card:hover { transform:none; border-color:#111; }
+
+/* ============ Light Premium collection (9–18) ============
+   نفس فلسفة 1–8: لكل ثيم شخصية (حواف/ظلال/مطبعة/إيقاع) وليس ألواناً فقط. */
+
+/* 9) Pearl White — نقاء متحفي: ظلال شبه معدومة، حياد فضي، تباعد واسع */
+html[data-theme-preset='pearl-white'] {
+  --color-ink:#26262b; --color-rose:#9a9aa6; --color-cream:#fdfdfd; --color-blush:#f1f1f4; --color-surface:#ffffff;
+  --rgb-ink:38 38 43; --rgb-rose:154 154 166; --rgb-cream:253 253 253; --rgb-blush:241 241 244; --rgb-surface:255 255 255;
+  --color-text-muted:#77777f; --color-price:#3c3c44; --color-promo-bg:#26262b; --color-promo-text:#f4f4f6;
+  --radius-base:.9rem; --card-radius:1.1rem;
+  --heading-tracking:-.03em; --heading-weight:600;
+  --card-shadow:0 1px 4px rgb(38 38 43 / 4%); --card-shadow-hover:0 14px 34px rgb(38 38 43 / 10%);
+  --btn-radius:12px; --btn-padding-y:.85rem; --btn-padding-x:1.8rem;
+  --section-y:clamp(52px,7.5vw,110px); --marquee-duration:34s;
+}
+/* 10) Rose Gold Elegance — معدني دافئ: Serif فخم، ظل وردي نحاسي */
+html[data-theme-preset='rose-gold-elegance'] {
+  --color-ink:#43262d; --color-rose:#b76e79; --color-cream:#fdf6f4; --color-blush:#f6dfd9; --color-surface:#fffbfa;
+  --rgb-ink:67 38 45; --rgb-rose:183 110 121; --rgb-cream:253 246 244; --rgb-blush:246 223 217; --rgb-surface:255 251 250;
+  --color-text-muted:#8a6d72; --color-price:#a25863; --color-promo-bg:#b76e79; --color-promo-text:#fffaf8;
+  --radius-base:1.1rem; --card-radius:1.35rem;
+  --heading-tracking:-.02em; --heading-weight:600;
+  --card-shadow:0 3px 16px rgb(183 110 121 / 10%); --card-shadow-hover:0 20px 46px rgb(183 110 121 / 22%);
+  --btn-radius:999px; --btn-padding-y:.88rem; --btn-padding-x:1.85rem;
+  --section-y:clamp(48px,7vw,100px); --marquee-duration:32s;
+}
+/* 11) Pink Blossom — ربيعي خفيف: حبّة كاملة، ظل زهري رقيق، حركة أنشط */
+html[data-theme-preset='pink-blossom'] {
+  --color-ink:#4a2a38; --color-rose:#ec9bb6; --color-cream:#fffafc; --color-blush:#fbe0eb; --color-surface:#ffffff;
+  --rgb-ink:74 42 56; --rgb-rose:236 155 182; --rgb-cream:255 250 252; --rgb-blush:251 224 235; --rgb-surface:255 255 255;
+  --color-text-muted:#8f6c7c; --color-price:#cb6b8d; --color-promo-bg:#fbe0eb; --color-promo-text:#4a2a38;
+  --radius-base:1.5rem; --card-radius:1.85rem;
+  --heading-tracking:-.035em; --heading-weight:700;
+  --card-shadow:0 4px 18px rgb(236 155 182 / 12%); --card-shadow-hover:0 20px 44px rgb(236 155 182 / 24%);
+  --btn-radius:999px; --btn-padding-y:.8rem; --btn-padding-x:1.6rem;
+  --section-y:clamp(42px,6vw,88px); --marquee-duration:24s;
+}
+/* 12) Champagne Luxe — فخامة هادئة: زوايا صغيرة، Serif، ذهب باهت */
+html[data-theme-preset='champagne-luxe'] {
+  --color-ink:#3e3223; --color-rose:#c8a878; --color-cream:#fbf7ef; --color-blush:#f1e6d0; --color-surface:#fffdf8;
+  --rgb-ink:62 50 35; --rgb-rose:200 168 120; --rgb-cream:251 247 239; --rgb-blush:241 230 208; --rgb-surface:255 253 248;
+  --color-text-muted:#83745e; --color-price:#9c7f4e; --color-promo-bg:#3e3223; --color-promo-text:#eeddc0;
+  --radius-base:.55rem; --card-radius:.8rem;
+  --heading-tracking:-.01em; --heading-weight:600;
+  --card-shadow:0 2px 12px rgb(62 50 35 / 7%); --card-shadow-hover:0 18px 42px rgb(62 50 35 / 15%);
+  --btn-radius:8px; --btn-padding-y:.92rem; --btn-padding-x:2rem;
+  --nav-transform:uppercase; --nav-tracking:.11em;
+  --section-y:clamp(52px,7.5vw,110px); --marquee-duration:36s;
+}
+/* 13) Blush Beauty — ترابي ناضج: دفء نود، ظل ناعم متوسط */
+html[data-theme-preset='blush-beauty'] {
+  --color-ink:#503a3a; --color-rose:#d8a7a0; --color-cream:#fdf8f6; --color-blush:#f4ded8; --color-surface:#fffcfb;
+  --rgb-ink:80 58 58; --rgb-rose:216 167 160; --rgb-cream:253 248 246; --rgb-blush:244 222 216; --rgb-surface:255 252 251;
+  --color-text-muted:#937974; --color-price:#b0736a; --color-promo-bg:#d8a7a0; --color-promo-text:#4a2f2c;
+  --radius-base:1.2rem; --card-radius:1.45rem;
+  --heading-tracking:-.02em; --heading-weight:600;
+  --card-shadow:0 3px 14px rgb(80 58 58 / 7%); --card-shadow-hover:0 18px 40px rgb(80 58 58 / 15%);
+  --btn-radius:14px; --btn-padding-y:.88rem; --btn-padding-x:1.85rem;
+  --section-y:clamp(46px,6.8vw,96px); --marquee-duration:32s;
+}
+/* 14) Pink & Gold — ثنائية احتفالية: ذهب في التفاصيل والحدود */
+html[data-theme-preset='pink-gold'] {
+  --color-ink:#472936; --color-rose:#d4989d; --color-cream:#fff8f9; --color-blush:#f9e2e6; --color-surface:#fffcfc;
+  --rgb-ink:71 41 54; --rgb-rose:212 152 157; --rgb-cream:255 248 249; --rgb-blush:249 226 230; --rgb-surface:255 252 252;
+  --color-text-muted:#8c6d78; --color-price:#ab7328; --color-promo-bg:#472936; --color-promo-text:#f2d9a0;
+  --color-card-border:rgb(195 162 79 / 22%);
+  --radius-base:1.05rem; --card-radius:1.3rem;
+  --heading-tracking:-.025em; --heading-weight:700;
+  --card-shadow:0 3px 14px rgb(195 162 79 / 10%); --card-shadow-hover:0 18px 42px rgb(195 162 79 / 20%);
+  --btn-radius:999px; --btn-padding-y:.85rem; --btn-padding-x:1.75rem;
+  --section-y:clamp(46px,6.5vw,96px); --marquee-duration:30s;
+}
+/* 15) Soft Lavender — هدوء بارد: هندسي ناعم، ظل بنفسجي شفاف */
+html[data-theme-preset='soft-lavender'] {
+  --color-ink:#3d3450; --color-rose:#a48ec7; --color-cream:#fbfaff; --color-blush:#e9e2f5; --color-surface:#ffffff;
+  --rgb-ink:61 52 80; --rgb-rose:164 142 199; --rgb-cream:251 250 255; --rgb-blush:233 226 245; --rgb-surface:255 255 255;
+  --color-text-muted:#7c7292; --color-price:#7c62a8; --color-promo-bg:#a48ec7; --color-promo-text:#ffffff;
+  --radius-base:1.15rem; --card-radius:1.4rem;
+  --heading-tracking:-.03em; --heading-weight:700;
+  --card-shadow:0 3px 16px rgb(164 142 199 / 12%); --card-shadow-hover:0 18px 42px rgb(164 142 199 / 22%);
+  --btn-radius:14px; --btn-padding-y:.85rem; --btn-padding-x:1.75rem;
+  --section-y:clamp(48px,7vw,100px); --marquee-duration:33s;
+}
+/* 16) Fresh Mint — طبيعي نظيف: حبّة كاملة، حدود أوضح، ظل خفيف جداً */
+html[data-theme-preset='fresh-mint'] {
+  --color-ink:#22382f; --color-rose:#7fbfa4; --color-cream:#fafdfb; --color-blush:#ddefe6; --color-surface:#ffffff;
+  --rgb-ink:34 56 47; --rgb-rose:127 191 164; --rgb-cream:250 253 251; --rgb-blush:221 239 230; --rgb-surface:255 255 255;
+  --color-text-muted:#647a70; --color-price:#3f8465; --color-promo-bg:#7fbfa4; --color-promo-text:#12261d;
+  --radius-base:1.55rem; --card-radius:1.9rem;
+  --heading-tracking:-.03em; --heading-weight:600;
+  --card-shadow:none; --card-shadow-hover:0 12px 30px rgb(34 56 47 / 10%);
+  --btn-radius:999px; --btn-padding-y:.8rem; --btn-padding-x:1.65rem;
+  --section-y:clamp(52px,8vw,112px); --marquee-duration:30s;
+}
+html[data-theme-preset='fresh-mint'] .premium-card { border-width:1.5px; }
+/* 17) Peach Glow — مشمس حيوي: زوايا دائرية، ظل خوخي دافئ، حركة أسرع */
+html[data-theme-preset='peach-glow'] {
+  --color-ink:#4c3128; --color-rose:#f2a58c; --color-cream:#fff9f5; --color-blush:#fbdfd0; --color-surface:#fffcfa;
+  --rgb-ink:76 49 40; --rgb-rose:242 165 140; --rgb-cream:255 249 245; --rgb-blush:251 223 208; --rgb-surface:255 252 250;
+  --color-text-muted:#8f7468; --color-price:#c66a4a; --color-promo-bg:#f2a58c; --color-promo-text:#47251a;
+  --radius-base:1.35rem; --card-radius:1.65rem;
+  --heading-tracking:-.035em; --heading-weight:700;
+  --card-shadow:0 4px 16px rgb(242 165 140 / 14%); --card-shadow-hover:0 20px 44px rgb(242 165 140 / 26%);
+  --btn-radius:999px; --btn-padding-y:.82rem; --btn-padding-x:1.65rem;
+  --section-y:clamp(42px,6vw,88px); --marquee-duration:24s;
+}
+/* 18) Powder Blue Luxury — أرستقراطي بارد: زوايا صغيرة، Serif عناوين، uppercase nav */
+html[data-theme-preset='powder-blue-luxury'] {
+  --color-ink:#243447; --color-rose:#94b3cf; --color-cream:#fafcfe; --color-blush:#dfe9f2; --color-surface:#ffffff;
+  --rgb-ink:36 52 71; --rgb-rose:148 179 207; --rgb-cream:250 252 254; --rgb-blush:223 233 242; --rgb-surface:255 255 255;
+  --color-text-muted:#68798c; --color-price:#4a6f94; --color-promo-bg:#243447; --color-promo-text:#cfe0ef;
+  --radius-base:.6rem; --card-radius:.85rem;
+  --heading-tracking:-.01em; --heading-weight:600;
+  --card-shadow:0 2px 12px rgb(36 52 71 / 7%); --card-shadow-hover:0 16px 40px rgb(36 52 71 / 15%);
+  --btn-radius:8px; --btn-padding-y:.92rem; --btn-padding-x:2rem;
+  --nav-transform:uppercase; --nav-tracking:.12em;
+  --section-y:clamp(52px,7.5vw,110px); --marquee-duration:36s;
+}
+
+@layer base {
+  body { font-family:var(--font-body); letter-spacing:-.01em; }
+  h1,h2,h3,h4,h5,.font-heading { font-family:var(--font-heading); letter-spacing:var(--heading-tracking); font-weight:var(--heading-weight); line-height:1.08; }
+  nav,.nav-font { font-family:var(--font-nav); text-transform:var(--nav-transform); letter-spacing:var(--nav-tracking); }
+  button,.btn,.button { font-family:var(--font-button); }
+  .price,[class*='price'],del { font-family:var(--font-price); letter-spacing:0; }
+  .promo-font,.announcement-track { font-family:var(--font-promo); }
+  .container-x { width:min(100% - 2rem, 1280px); margin-inline:auto; }
+}
+
+/* Smooth premium surfaces and focus states */
+@layer components {
+  .premium-card {
+    border:1px solid var(--color-card-border);
+    border-radius:var(--card-radius);
+    background:var(--color-card-bg);
+    box-shadow:var(--card-shadow);
+    overflow:hidden;
+    transition:transform var(--dur-base) var(--ease-out-soft), box-shadow var(--dur-base) var(--ease-out-soft), border-color var(--dur-base);
+  }
+  .premium-card:hover { transform:translateY(-3px); box-shadow:var(--card-shadow-hover); }
+  .btn-premium { border-radius:var(--btn-radius); padding:var(--btn-padding-y) var(--btn-padding-x); font-weight:700; transition:transform .2s,box-shadow .2s,background .2s; }
+  .btn-premium:hover { transform:translateY(-1px); }
+}
+
+/* ============================================================
+   Announcement bar — continuous infinite marquee.
+
+   البنية: shell (viewport مقصوص) → track (flex, width:max-content)
+   → مجموعتان متطابقتان (.announcement-group). الحركة على الـ track
+   بمقدار عرض مجموعة واحدة بالضبط (50% من عرض track المكوَّن من
+   مجموعتين) فتتطابق نهاية الدورة مع بدايتها = loop بلا قفزة ولا فراغ.
+
+   الاتجاه يُشتق من dir الخاص بالشريط نفسه (وليس html) لأن الأدمن قد
+   يفرض direction مخالفاً لاتجاه الصفحة:
+     RTL: المحتوى يدخل من اليسار ويخرج من اليمين → translateX 0→+50%
+     LTR: المحتوى يدخل من اليمين ويخرج من اليسار → translateX 0→-50%
+   ============================================================ */
+/* توكِنات الشريط — تُشتق من توكِنات الثيم فيتبع الشريط أي ثيم تلقائياً،
+   وتبقى ألوان الأدمن الصريحة (bgColor/textColor) أعلى أولوية عبر inline style */
+.announcement-shell {
+  --announcement-bg: var(--color-promo-bg, var(--color-ink));
+  --announcement-text: var(--color-promo-text, #ffffff);
+  --announcement-accent: color-mix(in srgb, var(--announcement-text) 82%, transparent);
+  --announcement-separator: color-mix(in srgb, var(--announcement-text) 45%, transparent);
+  position:relative; overflow:hidden; isolation:isolate;
+  display:flex; align-items:center;
+  background-color: var(--announcement-bg);
+  color: var(--announcement-text);
+}
+/* حواف متلاشية أنيقة على الطرفين (transparent بمزج srgb حتى لا تسودّ على Safari) */
+.announcement-shell::before, .announcement-shell::after {
+  content:''; position:absolute; inset-block:0; width:clamp(28px,4vw,56px); z-index:2; pointer-events:none;
+}
+.announcement-shell::before { left:0; background:linear-gradient(90deg, var(--announcement-bg), color-mix(in srgb, var(--announcement-bg) 0%, transparent)); }
+.announcement-shell::after  { right:0; background:linear-gradient(270deg, var(--announcement-bg), color-mix(in srgb, var(--announcement-bg) 0%, transparent)); }
+
+.announcement-track {
+  display:flex; width:max-content; flex:none;
+  animation:ann-marquee-ltr var(--marquee-duration, 30s) linear infinite;
+  animation-play-state:var(--marquee-play, running);
+  will-change:transform;
+  backface-visibility:hidden;
+}
+.announcement-shell[dir='rtl'] .announcement-track { animation-name:ann-marquee-rtl; }
+
+.announcement-group { display:flex; flex:none; align-items:center; }
+
+/* [icon] نص [رابط] [فاصل معيّني] */
+.announcement-segment {
+  display:inline-flex; align-items:center; gap:.6rem;
+  white-space:nowrap;
+  padding-block:.6rem;
+  font-weight:600; letter-spacing:.06em; font-size:12.5px;
+  font-family:var(--font-promo);
+}
+.announcement-icon { display:inline-grid; place-items:center; color:var(--announcement-accent); font-style:normal; }
+.announcement-text { opacity:.95; }
+.announcement-link { text-decoration:underline; text-underline-offset:4px; color:var(--announcement-accent); transition:color .2s; }
+.announcement-link:hover { color:var(--announcement-text); }
+.announcement-sep {
+  display:inline-block; width:5px; height:5px; flex:none;
+  margin-inline:clamp(20px,3vw,44px);
+  background:var(--announcement-separator);
+  transform:rotate(45deg); /* معيّن صغير */
+}
+
+/*
+  لا إيقاف عند الـ hover — قرار مقصود.
+  كانت قاعدة `:hover → paused` هي سبب "الشريط ثابت على اللابتوب":
+  موضع مؤشر الماوس الافتراضي عند فتح الصفحة هو أعلى-يسار الشاشة (0,0)
+  وهي نقطة داخل الشريط نفسه، فيتجمّد منذ اللحظة الأولى قبل أي تفاعل.
+  المطلوب: حركة مستمرة دائماً على كل الأجهزة.
+*/
+
+/* الحركة دائماً بمقدار عرض مجموعة واحدة = نصف الـ track (مجموعتان متطابقتان).
+
+   الاتجاه حسب المواصفة: RTL يتحرك من اليمين إلى اليسار، LTR من اليسار إلى اليمين.
+   الهندسة (سبب البدء من ±50% بدل 0):
+   - RTL: الـ track مرصوص لليمين ويمتد فائضه يساراً؛ تحريكه -X من الصفر مباشرة
+     يكشف فراغاً على اليمين. بالبدء من +50% (إزاحة مجموعة كاملة) والعودة إلى 0
+     تدخل المجموعة الاحتياطية من اليمين وتبقى الشاشة مغطاة طوال الدورة،
+     وإطار النهاية مطابق لإطار البداية = loop بلا قفزة.
+   - LTR: معكوس بالمرآة (من -50% إلى 0). */
+@keyframes ann-marquee-ltr { from { transform:translateX(-50%); } to { transform:translateX(0); } }
+@keyframes ann-marquee-rtl { from { transform:translateX(50%); } to { transform:translateX(0); } }
+
+/*
+  قرار منتج صريح — الشريط يتحرك دائماً على كل الأجهزة.
+  كان تفعيل "تقليل الحركة" في نظام التشغيل (شائع على اللابتوبات:
+  Windows battery-saver / إيقاف الأنيميشن، macOS Reduce Motion)
+  يجمّد الشريط تماماً عبر قاعدتين: animation:none الخاصة بالشريط
+  هنا، والقاعدة العامة *{animation-duration:.001ms!important}
+  في نهاية الملف — بينما يظل الهاتف (بلا هذا الإعداد) متحركاً.
+  أي: "موبايل يتحرك ولابتوب ثابت".
+  التجاوز أدناه أعلى خصوصيةً من قاعدة `*` (0,1,0 مقابل 0,0,0)
+  مع !important فيكسب الاثنتين، ولا يمسّ بقية الموقع التي تظل
+  محترمةً لتفضيل المستخدم كالمعتاد.
+*/
+@media (prefers-reduced-motion: reduce) {
+  .announcement-track {
+    animation-name: ann-marquee-ltr;
+    animation-timing-function: linear;
+    animation-duration: var(--marquee-duration, 30s) !important;
+    animation-iteration-count: infinite !important;
+    animation-play-state: running !important;
+  }
+  .announcement-shell[dir='rtl'] .announcement-track { animation-name: ann-marquee-rtl; }
+}
+
+/* Header refinement */
+header .glass { backdrop-filter:saturate(150%) blur(18px); background:color-mix(in srgb, var(--color-header-bg) 86%, transparent); }
+header.sticky { box-shadow:0 8px 30px rgb(17 17 17 / 6%); }
+header a, header button { transition:color .2s, background .2s, transform .2s; }
+header .group:hover .group-hover\:block { display:block; }
+
+/* Product card premium polish without changing architecture */
+.product-card, [class*='product-card'] { isolation:isolate; }
+.product-card img, .group.relative img { transition:transform .7s var(--ease-out-soft), opacity .3s; }
+.product-card:hover img, .group.relative:hover img { transform:scale(1.055); }
+.product-card h3 { font-family:var(--font-heading); }
+.product-card .price { font-weight:700; }
+@media (max-width: 640px) {
+  :root { --section-y:42px; }
+  .container-x { width:min(100% - 1.25rem, 1280px); }
+}
+
+/* Typography scale and editorial hierarchy */
+@layer base {
+  h1 { font-size: clamp(2.25rem, 5vw, 4.75rem); line-height: .98; letter-spacing:-.055em; font-weight:700; }
+  h2 { font-size: clamp(1.75rem, 3.4vw, 3rem); line-height:1.04; letter-spacing:-.04em; font-weight:700; }
+  h3 { font-size: clamp(1.2rem, 2vw, 1.65rem); line-height:1.15; letter-spacing:-.025em; font-weight:700; }
+  .section-title, .section-title h2 { letter-spacing:-.045em; }
+  .section-title .text-ink-muted { letter-spacing:0; }
+  .price, [class*='price'] { font-feature-settings:'tnum'; font-weight:700; }
+  .btn, button, .nav-font { letter-spacing:.01em; }
+  .text-balance { text-wrap:balance; }
+}
+
+/* Buttons */
+@layer components {
+  .btn, .button, button.btn, .btn-primary, .btn-rose, .btn-outline, .btn-ghost, .btn-soft, .btn-danger, .btn-white {
+    border-radius:var(--btn-radius);
+    min-height:44px;
+    box-shadow:0 1px 0 rgb(255 255 255 / 10%) inset;
+  }
+  .btn:active, .button:active, button.btn:active { transform:translateY(1px) scale(.995); }
+  .btn-outline { border-color:var(--color-border); background:color-mix(in srgb, var(--color-surface) 88%, transparent); }
+  .btn-ghost:hover { background:color-mix(in srgb, var(--color-rose) 10%, transparent); }
+  .btn-rose, .bg-rose { box-shadow:0 10px 26px rgb(var(--rgb-rose) / 18%); }
+  .add-to-cart, [aria-label*='cart' i], [aria-label*='سلة' i] { border-radius:999px; }
+}
+
+/* Header refinement */
+header { isolation:isolate; }
+header .container-x { gap:1.25rem; }
+header .glass { box-shadow:0 1px 0 rgb(17 17 17 / 4%), 0 12px 34px rgb(17 17 17 / 5%); }
+header nav a { position:relative; padding-block:.35rem; font-weight:600; }
+header nav a::after { content:''; position:absolute; inset-inline:0; bottom:-.15rem; height:1px; background:currentColor; transform:scaleX(0); transform-origin:inline-start; transition:transform .25s var(--ease-out-soft); opacity:.7; }
+header nav a:hover::after { transform:scaleX(1); }
+@media (min-width: 1024px) { header .container-x { min-height:76px; } header form[role='search'] { max-width:34rem; } }
+
+/* Announcement */
+/* مقاسات الشريط (القواعد التفصيلية أعلاه في قسم الـ marquee) */
+.announcement-shell { min-height:40px; letter-spacing:.08em; text-transform:uppercase; }
+@media (max-width:640px){
+  .announcement-shell { min-height:36px; }
+  .announcement-segment { font-size:11px; gap:.5rem; }
+  .announcement-sep { margin-inline:clamp(14px,4vw,24px); }
+}
+
+/* Hero */
+.hero, .hero-slider, section:has(> .swiper) { position:relative; }
+.hero .container-x, section:has(> .swiper) .container-x { padding-block:clamp(2rem,5vw,4rem); }
+.hero [class*='max-w-'] { max-width:min(680px, 92vw); }
+.hero h1 { max-width:12ch; text-shadow:0 18px 50px rgb(0 0 0 / 28%); }
+.hero p { max-width:46ch; font-size:clamp(.98rem,1.4vw,1.12rem); line-height:1.75; }
+.hero a.rounded-full { padding-inline:1.65rem; min-height:48px; letter-spacing:.02em; backdrop-filter:blur(14px); }
+.hero .backdrop-blur { backdrop-filter:blur(16px); }
+@media (max-width:767px){
+  /*
+    ارتفاع الهيرو على الموبايل: نسبة 4:5 من عرض الشاشة (aspect جميل
+    للبورتريه) بسقف 560px وأرضية 420px — بدل 560px الثابتة التي كانت
+    تبتلع شاشة 360×640 بالكامل وتقصّ صور الديسكتوب العريضة بشكل سيئ.
+  */
+  .hero .swiper, .hero .swiper-slide, .hero .h-full {
+    min-height:clamp(420px, 125vw, 560px) !important;
+    height:clamp(420px, 125vw, 560px) !important;
+  }
+  .hero [class*='max-w-'] { max-width:100%; }
+  .hero h1 { font-size:clamp(2rem,10vw,3.2rem); max-width:12ch; }
+  .hero p { font-size:.95rem; max-width:38ch; }
+  /* تدرّج قراءة أقوى أسفل الصورة ليبقى النص والـ CTA واضحين فوق أي صورة */
+  .hero .absolute.inset-0 .container-x { align-items:flex-end; padding-bottom:2.25rem; background:linear-gradient(to top, rgb(0 0 0 / 74%), rgb(0 0 0 / 18%) 55%, transparent); }
+  .hero a.rounded-full { min-height:46px; padding-inline:1.4rem; }
+}
+
+/* نماذج على اللمس: خط ≥16px داخل الحقول يمنع الزوم التلقائي المزعج في iOS
+   عند التركيز على input (يحدث تحت 16px)، مع إبقاء مقاس الديسكتوب كما هو */
+@media (pointer:coarse) {
+  .input, input.input, select.input, textarea.input { font-size:16px; }
+}
+
+/* أهداف اللمس: أزرار أيقونات الكروت 36px تصير ≥42px على شاشات اللمس
+   (إرشادات WCAG/Apple ≥44 وGoogle ≥48 مع الهوامش — 42 + gap يكفي هنا) */
+@media (pointer:coarse) {
+  .product-card button.h-9, .product-card .h-9.w-9,
+  .product-card button.h-8, .product-card .h-8.w-8 {
+    height:2.65rem !important; width:2.65rem !important;
+  }
+}
+
+/* Cards / product presentation */
+.card, .product-card, .premium-card { background:var(--color-card-bg); border-color:var(--color-card-border); }
+.card-hover:hover, .product-card:hover { box-shadow:var(--shadow-lg); }
+.product-card .aspect-square, .product-card .aspect-\[4\/5\], .product-card .aspect-\[5\/4\] { background:linear-gradient(180deg, color-mix(in srgb,var(--color-blush) 55%,transparent), color-mix(in srgb,var(--color-cream) 80%,transparent)); }
+.product-card img { object-fit:contain; padding:10%; }
+.product-card h3 { min-height:2.55rem; font-size:clamp(.93rem,1vw,1rem); }
+.product-card .brandName, .product-card [class*='uppercase'] { letter-spacing:.12em; }
+.product-card .price { font-size:1.08rem; }
+.product-card del { color:var(--color-text-muted); font-weight:500; }
+.product-card [class*='hover:opacity'] { transition:opacity .25s, transform .25s; }
+@media (hover:hover){ .product-card:hover .aspect-square img, .product-card:hover .aspect-\[4\/5\] img { transform:scale(1.045); } }
+
+/* Section rhythm */
+main section, main .section { padding-block:var(--section-y); }
+main .py-8, main .py-10, main .py-12 { padding-block:clamp(2rem,4vw,3.75rem); }
+.section-header { margin-bottom:clamp(1.35rem,3vw,2.7rem); }
+.breadcrumbs, .muted, time, .text-ink-muted { letter-spacing:0; line-height:1.65; }
+
+/* Accessibility and overflow safety */
+img, video, .swiper, table { max-width:100%; }
+html, body { overflow-x:hidden; }
+:focus-visible { outline:2px solid color-mix(in srgb,var(--color-rose) 70%, white); outline-offset:3px; border-radius:8px; }
+@media (prefers-reduced-motion: reduce){ *, *::before, *::after { animation-duration:.001ms !important; animation-iteration-count:1 !important; scroll-behavior:auto !important; transition:none !important; } }
+
+/* ============================================================
+   21) Rosewood Editorial — إيديتوريال فاخر:
+   عاجي هادئ + حبر دافئ + توكيد روزوود واحد.
+   القاعدة: المنتج والصور هما اللون — الواجهة محايدة تماماً.
+   حدود شعرية (hairline) بدل الظلال الثقيلة، هيرو بحملة صورية
+   بتغطية خفيفة، ومساحات تنفّس تحريرية سخية.
+   ============================================================ */
+html[data-theme-preset='rosewood-editorial'] {
+  --color-ink:#221d1a; --color-rose:#9c5a64; --color-cream:#faf8f5; --color-blush:#f2e7e4; --color-surface:#ffffff;
+  --rgb-ink:34 29 26; --rgb-rose:156 90 100; --rgb-cream:250 248 245; --rgb-blush:242 231 228; --rgb-surface:255 255 255;
+  --color-text-muted:#6d655e; --color-price:#221d1a; --color-promo-bg:#221d1a; --color-promo-text:#f7f1ea;
+  --color-card-border:rgb(34 29 26 / 10%); --color-border:rgb(34 29 26 / 14%);
+  --radius-base:.9rem; --card-radius:1.1rem;
+  --heading-tracking:-.02em; --heading-weight:600;
+  --card-shadow:0 1px 2px rgb(34 29 26 / 4%), 0 8px 24px rgb(34 29 26 / 6%);
+  --card-shadow-hover:0 18px 44px rgb(34 29 26 / 12%);
+  --btn-radius:12px; --btn-padding-y:.85rem; --btn-padding-x:1.8rem;
+  --nav-transform:uppercase; --nav-tracking:.1em;
+  --section-y:clamp(56px,8vw,120px); --marquee-duration:36s;
+}
+html[data-theme-preset='rosewood-editorial'][dir='ltr'] h1,
+html[data-theme-preset='rosewood-editorial'][dir='ltr'] h2 { letter-spacing:-.02em; }
+
+/* هيرو إيديتوريالي: تغطية أخف حتى تبقى صورة الحملة هي البطل،
+   ونصوص محصورة بعرض مريح بدل النصوص العملاقة فوق الصورة */
+html[data-theme-preset='rosewood-editorial'] .swiper-slide .bg-gradient-to-l {
+  background-image:linear-gradient(to left, rgb(34 29 26 / 64%), rgb(34 29 26 / 14%) 55%, transparent 92%) !important;
+}
+html[data-theme-preset='rosewood-editorial'][dir='rtl'] .swiper-slide .bg-gradient-to-l {
+  background-image:linear-gradient(to right, rgb(34 29 26 / 64%), rgb(34 29 26 / 14%) 55%, transparent 92%) !important;
+}
+html[data-theme-preset='rosewood-editorial'] .swiper-slide h1 { max-width:17ch; font-weight:600; }
+html[data-theme-preset='rosewood-editorial'] .swiper-slide p { max-width:44ch; }
+
+/* حافة معرفة بدل الظل فقط — مبدأ 1px hairline من أنظمة التصميم العالمية */
+html[data-theme-preset='rosewood-editorial'] .product-card,
+html[data-theme-preset='rosewood-editorial'] .premium-card { border-width:1px; }

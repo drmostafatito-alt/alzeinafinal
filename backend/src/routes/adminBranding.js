@@ -1,0 +1,22 @@
+import { Hono } from 'hono';
+import { all, run, first } from '../lib/db.js';
+import { ok, created, nowIso, uuid } from '../lib/response.js';
+import { admin, adminOrModerator } from '../middleware/auth.js';
+import { getSettings, updateSettings } from '../services/settings.js';
+
+const app = new Hono();
+app.get('/branding', adminOrModerator, async c => ok(c, (await getSettings(c.env)).branding));
+app.put('/branding', admin, async c => ok(c, (await updateSettings(c.env,{ branding: await c.req.json() })).branding));
+app.get('/branding/export', adminOrModerator, async c => c.body(JSON.stringify((await getSettings(c.env)).branding,null,2),200,{'Content-Type':'application/json','Content-Disposition':'attachment; filename="branding.json"'}));
+app.post('/branding/import', admin, async c => { const profile=await c.req.json(); return created(c, (await updateSettings(c.env,{ branding:profile })).branding); });
+app.post('/branding/reset', admin, async c => { await c.env.DB.prepare("DELETE FROM settings WHERE key='branding'").run(); return ok(c, (await getSettings(c.env)).branding); });
+app.get('/flags', adminOrModerator, async c => ok(c, (await getSettings(c.env)).flags));
+app.put('/flags', admin, async c => ok(c, (await updateSettings(c.env,{ flags: await c.req.json() })).flags));
+app.post('/flags/reset', admin, async c => { await c.env.DB.prepare("DELETE FROM settings WHERE key='flags'").run(); return ok(c, (await getSettings(c.env)).flags); });
+app.get('/plugins', adminOrModerator, async c => ok(c, (await getSettings(c.env)).plugins));
+app.put('/plugins', admin, async c => ok(c, (await updateSettings(c.env,{ plugins: await c.req.json() })).plugins));
+app.get('/files', adminOrModerator, async c => { const q=`%${c.req.query('q')||''}%`; const path=c.req.query('path'); const rows=path?await all(c.env.DB.prepare('SELECT * FROM media WHERE folder=? ORDER BY createdAt DESC').bind(path)):await all(c.env.DB.prepare('SELECT * FROM media WHERE originalName LIKE ? OR title LIKE ? ORDER BY createdAt DESC LIMIT 200').bind(q,q)); return ok(c,{files:rows,path:path||'/'}); });
+app.delete('/files', admin, async c => { const path=c.req.query('path'); const m=await first(c.env.DB.prepare('SELECT * FROM media WHERE filename=? OR url=?').bind(path,path)); if(m){ await c.env.R2.delete(m.filename); await run(c.env.DB.prepare('DELETE FROM media WHERE id=?').bind(m.id)); } return ok(c,{deleted:true}); });
+app.post('/files/folder', admin, c => created(c,{folder:c.req.query('path'),created:true}));
+app.get('/files/usage', adminOrModerator, async c => { const rows=await all(c.env.DB.prepare('SELECT folder, COUNT(*) count, COALESCE(SUM(size),0) bytes FROM media GROUP BY folder')); return ok(c,{ usage:rows, total:rows.reduce((s,r)=>s+r.count,0) }); });
+export default app;

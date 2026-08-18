@@ -1,0 +1,14 @@
+export const ok = (c, data, message = 'OK', status = 200) => c.json({ status: 'success', message, data }, status);
+export const created = (c, data, message = 'Created') => c.json({ status: 'success', message, data }, 201);
+export const fail = (c, message, status = 400, extra = {}) => c.json({ status: 'error', message, ...extra }, status);
+export const paginate = (page, limit, total) => ({ page, limit, total, pages: Math.max(1, Math.ceil(total / limit)), hasNext: page * limit < total, hasPrev: page > 1 });
+export const parseJson = (v, fallback) => { try { return v == null ? fallback : JSON.parse(v); } catch { return fallback; } };
+export const stringify = (v) => JSON.stringify(v ?? null);
+export const nowIso = () => new Date().toISOString();
+export const uuid = () => crypto.randomUUID();
+export const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+export const slugify = (s) => String(s || '').toLowerCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\u0600-\u06FF]+/g, '-').replace(/^-+|-+$/g, '') || `item-${Date.now()}`;
+export const pick = (obj, keys) => Object.fromEntries(keys.map(k => [k, obj?.[k]]).filter(([, v]) => v !== undefined));
+export const setFields = (obj, payload, fields) => { for (const f of fields) if (payload[f] !== undefined) obj[f] = payload[f]; return obj; };
+export const bool = (v) => v === true || v === 1 || v === '1' || v === 'true';
+export const asArray = (v) => Array.isArray(v) ? v : v === undefined || v === null || v === '' ? [] : [v];

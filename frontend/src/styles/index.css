@@ -1,0 +1,664 @@
+/*
+  مهم: @import يجب أن يسبق كل قواعد CSS الأخرى حسب المواصفة.
+  كان مكتوباً بعد توجيهات @tailwind فيتحوّل إلى @import في منتصف الملف
+  المُجمَّع — والمتصفح يتجاهله بصمت، ما كان يعطّل premium.css بالكامل:
+  ثيمات presets، خطوط العناوين، حركة شريط الإعلانات، وكل التحسينات البصرية.
+*/
+@import './premium.css';
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* تُحدَّث هذه القيم وقت التشغيل من إعدادات لوحة الإدارة (ConfigProvider) */
+  --color-ink: #111111;
+  --color-rose: #c89a8b;
+  --color-cream: #fff8f5;
+  --color-blush: #f8e8ea;
+  --color-surface: #ffffff;
+  --rgb-ink: 17 17 17;
+  --rgb-rose: 200 154 139;
+  --rgb-cream: 255 248 245;
+  --rgb-blush: 248 232 234;
+  --rgb-surface: 255 255 255;
+  /*
+    سلسلة خطوط الرموز التعبيرية.
+    أيقونات الشريط العلوي وشريط المزايا يختارها المالك كإيموجي، وبعض
+    الأنظمة (خصوصاً لينكس وبعض تثبيتات ويندوز) لا تجد محرفاً للرمز في
+    خط النص فتعرض مربّعاً فارغاً بدل الأيقونة. إضافة خطوط الإيموجي في
+    نهاية السلسلة تحلّ ذلك بلا تغيير شكل النص العربي أو الإنجليزي.
+  */
+  --font-emoji: 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+  --font-ar: 'Cairo', system-ui, sans-serif, var(--font-emoji);
+  --font-en: 'Poppins', system-ui, sans-serif, var(--font-emoji);
+  --radius-base: 1rem;
+
+  /* ---------- سلّم الارتفاع (elevation) ----------
+   * ظلال متدرّجة وناعمة بدل ظل واحد ثقيل — تعطي إحساساً راقياً
+   * وتحافظ على وضوح حدود البطاقات على الخلفيات الفاتحة.
+   */
+  --shadow-xs: 0 1px 2px rgb(17 17 17 / 4%);
+  --shadow-sm: 0 2px 8px rgb(17 17 17 / 5%);
+  --shadow-md: 0 6px 20px rgb(17 17 17 / 7%);
+  --shadow-lg: 0 16px 40px rgb(17 17 17 / 9%);
+  --shadow-ring: 0 0 0 1px rgb(17 17 17 / 5%);
+
+  /* ---------- منحنيات الحركة ---------- */
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --dur-fast: 160ms;
+  --dur-base: 240ms;
+  --dur-slow: 400ms;
+
+  /* ألوان إضافية يتحكم بها المدير — القيم هنا مجرد احتياطي */
+  --color-text: var(--color-ink);
+  /*
+    تحسين التباين مع الحفاظ على هوية العلامة (بند 5).
+    قِست القيم السابقة فعلياً:
+      • النص الثانوي #6b6b6b على الكريم = 5.07 (مقبول لكنه باهت)
+      • الروابط بلون الوردي #c89a8b على أبيض = 2.48 ← أقل من حد AA (4.5)
+    اخترنا درجة أغمق من نفس عائلة الوردي (#8f5f4e) بدل لون
+    جديد، فتبقى الهوية كما هي ويصبح الرابط مقروءاً فعلاً.
+    النتيجة: 5.36 على الأبيض · 5.11 على الكريم · 4.53 على البلاش —
+    كلها تتجاوز حد AA على كل أسطح المتجر لا سطح واحد.
+    الوردي الأصلي يبقى لون العلامة والأزرار والشارات بلا تغيير.
+  */
+  --color-text-muted: #5f5f5f;
+  --color-heading: var(--color-ink);
+  --color-link: #8f5f4e;
+  --color-btn-bg: var(--color-ink);
+  --color-btn-text: #ffffff;
+  --color-btn-hover-bg: var(--color-rose);
+  --color-header-bg: #ffffff;
+  --color-header-text: var(--color-ink);
+  --color-topbar-bg: var(--color-ink);
+  --color-topbar-text: #ffffff;
+  --color-footer-bg: var(--color-ink);
+  --color-footer-text: #ffffff;
+  --color-card-bg: #ffffff;
+  /* حدود أوضح بدرجة واحدة — كانت 5% تكاد تختفي على الشاشات الساطعة */
+  --color-card-border: rgb(0 0 0 / 8%);
+  --color-border: rgb(0 0 0 / 14%);
+  --color-body-bg: var(--color-cream);
+  --color-section-bg: transparent;
+  --color-hero-bg: var(--color-blush);
+  --color-promo-bg: var(--color-rose);
+  --color-promo-text: #ffffff;
+  --color-price: var(--color-rose);
+  --color-sale: #dc2626;
+}
+
+/* الوضع الليلي — يُفعّل من لوحة الإدارة أو تفضيل المستخدم */
+html.dark {
+  --color-cream: #14100f;
+  --color-blush: #241c1a;
+  --color-surface: #1b1614;
+  --rgb-cream: 20 16 15;
+  --rgb-blush: 36 28 26;
+  --rgb-surface: 27 22 20;
+  --color-text: #f4efec;
+  --color-text-muted: #a89f9a;
+  --color-heading: #ffffff;
+  --color-header-bg: #1b1614;
+  --color-header-text: #f4efec;
+  --color-card-bg: #1b1614;
+  --color-card-border: rgb(255 255 255 / 8%);
+  --color-border: rgb(255 255 255 / 14%);
+  --color-body-bg: #14100f;
+  --color-btn-text: #14100f;
+  color-scheme: dark;
+}
+
+html.dark body {
+  color: var(--color-text);
+}
+
+/**
+ * الأسطح البيضاء الثابتة (بطاقات/هيدر/مودالات) مكتوبة في عشرات المكوّنات
+ * كـ bg-white. بدل تعديل كل ملف، نعيد توجيهها في الوضع الليلي إلى لون
+ * السطح القابل للتحكم من لوحة الإدارة. هذا يبقي الكود الحالي كما هو
+ * ويجعل الوضع الليلي يعمل فوراً في كل الصفحات.
+ */
+html.dark .bg-white {
+  background-color: var(--color-card-bg);
+}
+html.dark .text-ink,
+html.dark .text-ink-soft {
+  color: var(--color-text);
+}
+html.dark .text-ink-muted {
+  color: var(--color-text-muted);
+}
+html.dark .border-black\/5 {
+  border-color: var(--color-card-border);
+}
+html.dark .border-black\/10,
+html.dark .border-ink\/15 {
+  border-color: var(--color-border);
+}
+html.dark .glass {
+  background-color: rgb(27 22 20 / 85%);
+}
+/* حقول الإدخال في الوضع الليلي */
+html.dark .input,
+html.dark input,
+html.dark select,
+html.dark textarea {
+  background-color: var(--color-card-bg);
+  color: var(--color-text);
+  border-color: var(--color-border);
+}
+html.dark .skeleton {
+  background-color: rgb(255 255 255 / 6%);
+}
+
+/*
+  خلفية الموقع التي يرفعها المدير.
+
+  المشكلة السابقة: كانت القيم مثبّتة (cover/fixed دائماً) بلا أي تحكّم،
+  وبلا طبقة تحسين قراءة — فتضيع النصوص فوق أي صورة فاتحة أو مزدحمة.
+  كذلك `background-attachment: fixed` يسبّب اهتزازاً ومشاكل أداء على
+  iOS/Android، فنعطّله على الشاشات الصغيرة.
+
+  كل المتغيّرات لها قيم افتراضية تطابق السلوك السابق تماماً، فالمتاجر
+  التي لم تغيّر شيئاً لا ترى أي فرق.
+*/
+body {
+  background-color: var(--color-body-bg);
+  background-image: var(--bg-body-image, none);
+  background-size: var(--bg-body-size, cover);
+  background-repeat: var(--bg-body-repeat, no-repeat);
+  background-attachment: var(--bg-body-attachment, fixed);
+  background-position: center;
+}
+
+/* الأجهزة اللمسية: التثبيت يسبّب اهتزاز التمرير */
+@media (hover: none) {
+  body {
+    background-attachment: scroll;
+  }
+}
+
+/*
+  طبقة تحسين القراءة فوق خلفية الموقع.
+  تظهر فقط عند وجود صورة خلفية وضبط شفافية أكبر من صفر.
+*/
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  display: var(--bg-overlay-display, none);
+  background-color: var(--bg-overlay-color, #000000);
+  opacity: var(--bg-overlay-opacity, 0);
+}
+
+/*
+  خلفيات الأقسام والعلامة المائية.
+
+  كانت هذه المتغيّرات تُضبط في ConfigProvider (IMAGE_VARS) وتُرفع
+  صورها من لوحة الإدارة، لكن لا قاعدة CSS واحدة تستخدمها — أي أن
+  المدير يرفع خلفية للأقسام أو علامة مائية ولا يظهر شيء إطلاقاً.
+  القيمة الافتراضية `none` تعني أن المتاجر التي لم ترفع صوراً لا
+  ترى أي تغيير.
+*/
+.section {
+  background-image: var(--bg-section-image, none);
+  background-size: cover;
+  background-position: center;
+}
+
+footer {
+  background-image: var(--bg-footer-image, none);
+  background-size: cover;
+  background-position: center;
+}
+
+/*
+  خلفية شريط العروض الترويجية.
+  كان promoBgImage يُضبط كمتغيّر CSS في ConfigProvider بلا أي قاعدة
+  تستخدمه — يرفع المالك صورة ولا تظهر أبداً.
+*/
+.promo-band {
+  background-image: var(--bg-promo-image, none);
+  background-size: cover;
+  background-position: center;
+}
+
+/* العلامة المائية: طبقة زخرفية فوق الصفحة لا تلتقط النقرات */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background-image: var(--bg-watermark, none);
+  background-repeat: var(--watermark-repeat, no-repeat);
+  background-position: var(--watermark-position, center);
+  /*
+    حجم متجاوب: clamp يمنع الصغر على الشاشات الكبيرة والتضخّم على
+    الموبايل. الوحدة vmin تتبع أصغر بُعد للشاشة فلا تتجاوز العلامة
+    حدود الصفحة أبداً. `contain` يحافظ على نسبة الأبعاد فلا تتشوّه،
+    ولأن المصدر صورة واحدة تُرسم بحجم أكبر فلا تحدث بكسلة إضافية
+    مقارنة بالحجم الثابت السابق.
+  */
+  background-size: var(--watermark-size, clamp(140px, 22vmin, 460px)) auto;
+  opacity: var(--watermark-opacity, 0.08);
+  display: var(--watermark-display, none);
+}
+
+@layer base {
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-cream text-ink antialiased;
+    font-family: var(--font-ar);
+  }
+
+  html[dir='ltr'] body {
+    font-family: var(--font-en);
+  }
+
+  /**
+   * سلّم طباعي متناسق.
+   * العناوين العربية تحتاج ارتفاع سطر أكبر قليلاً من الإنجليزية،
+   * والتباعد الحرفي السالب يناسب اللاتينية فقط — لذلك نفصل بينهما.
+   */
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply font-semibold;
+    line-height: 1.28;
+    text-wrap: balance;
+  }
+
+  html[dir='ltr'] h1,
+  html[dir='ltr'] h2,
+  html[dir='ltr'] h3,
+  html[dir='ltr'] h4 {
+    letter-spacing: -0.02em;
+  }
+
+  p {
+    line-height: 1.75;
+    text-wrap: pretty;
+  }
+
+  /* أرقام متناسقة العرض في الأسعار والجداول لمنع الاهتزاز */
+  .tabular,
+  .font-en {
+    font-variant-numeric: tabular-nums;
+  }
+
+  ::selection {
+    @apply bg-rose text-white;
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-blush;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-rose-300 rounded-full;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-rose;
+  }
+
+  input,
+  select,
+  textarea,
+  button {
+    font-family: inherit;
+  }
+
+  /**
+   * حلقة تركيز موحّدة لمستخدمي لوحة المفاتيح.
+   * :focus-visible لا تظهر عند النقر بالفأرة، فنحصل على وضوح
+   * للتنقّل بالكيبورد دون تشويه التصميم لمستخدمي الفأرة.
+   */
+  a:focus-visible,
+  button:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible,
+  [tabindex]:focus-visible {
+    outline: 2px solid var(--color-rose);
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+}
+
+@layer components {
+  /*
+    عرض المحتوى.
+    كان 1320px ثابتاً، فتظهر فراغات جانبية واسعة على الشاشات الكبيرة
+    وتبدو المنتجات منزاحة لا متمركزة. رفعناه قليلاً على الشاشات
+    العريضة فقط (2xl) مع زيادة الحشو الجانبي تدريجياً — بلا أي تغيير
+    على الموبايل واللابتوب حيث كان التخطيط سليماً أصلاً.
+  */
+  .container-x {
+    @apply mx-auto w-full max-w-[1320px] px-4 sm:px-6 lg:px-8 2xl:max-w-[1440px] 2xl:px-10;
+  }
+
+  /**
+   * الأزرار: حركة رفع خفيفة عند المرور وانضغاط عند الضغط.
+   * `active:` يعطي إحساساً لمسياً مهماً على الجوال حيث لا يوجد hover.
+   */
+  .btn {
+    @apply inline-flex select-none items-center justify-center gap-2 rounded-full px-6 py-3
+           text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60;
+    transition: transform var(--dur-fast) var(--ease-out-soft),
+      background-color var(--dur-base) var(--ease-out-soft),
+      color var(--dur-base) var(--ease-out-soft),
+      box-shadow var(--dur-base) var(--ease-out-soft),
+      border-color var(--dur-base) var(--ease-out-soft);
+  }
+  .btn:active:not(:disabled) {
+    transform: scale(0.97);
+  }
+  .btn-primary {
+    @apply btn bg-ink text-white;
+    box-shadow: var(--shadow-sm);
+  }
+  .btn-primary:hover:not(:disabled) {
+    @apply bg-rose;
+    box-shadow: var(--shadow-md);
+    transform: translateY(-1px);
+  }
+  .btn-rose {
+    @apply btn bg-rose text-white;
+    box-shadow: var(--shadow-sm);
+  }
+  .btn-rose:hover:not(:disabled) {
+    @apply bg-rose-600;
+    box-shadow: var(--shadow-md);
+    transform: translateY(-1px);
+  }
+  .btn-outline {
+    @apply btn border border-ink/15 bg-white text-ink hover:border-rose hover:text-rose;
+  }
+  .btn-outline:hover:not(:disabled) {
+    box-shadow: var(--shadow-sm);
+  }
+  .btn-ghost {
+    @apply btn text-ink hover:bg-blush;
+  }
+  .btn-sm {
+    @apply px-4 py-2 text-xs;
+  }
+
+  /* البطاقة: حدّ رفيع + ظل متدرّج بدل الظل المسطّح */
+  .card {
+    @apply rounded-2xl border border-black/5 bg-white;
+    box-shadow: var(--shadow-sm);
+  }
+
+  /* بطاقة تفاعلية ترتفع عند المرور — للمنتجات والأقسام */
+  .card-hover {
+    transition: transform var(--dur-base) var(--ease-out-soft),
+      box-shadow var(--dur-base) var(--ease-out-soft);
+  }
+  .card-hover:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-lg);
+  }
+
+  .input {
+    @apply w-full rounded-xl border border-black/10 bg-white px-4 py-3 text-sm outline-none
+           placeholder:text-ink-muted/60 focus:border-rose focus:ring-2 focus:ring-rose/20;
+    transition: border-color var(--dur-fast) var(--ease-out-soft),
+      box-shadow var(--dur-fast) var(--ease-out-soft),
+      background-color var(--dur-fast) var(--ease-out-soft);
+  }
+  .input:hover:not(:focus):not(:disabled) {
+    @apply border-black/20;
+  }
+  .input:disabled {
+    @apply cursor-not-allowed bg-black/[0.03] opacity-70;
+  }
+  /* حقل به خطأ — إشارة بصرية واضحة بلا اعتماد على اللون وحده */
+  .input-error {
+    @apply border-red-400 focus:border-red-500 focus:ring-red-500/20;
+  }
+  .label {
+    @apply mb-1.5 block text-sm font-medium text-ink-soft;
+  }
+  .field-error {
+    @apply mt-1 text-xs font-medium text-red-600;
+  }
+
+  /*
+    حشو الأقسام: سلّم متدرّج بدل قفزة واحدة.
+    كان py-12 → py-16 فقط، فيبدو الموبايل مزدحماً والشاشة الكبيرة
+    فارغة. الزيادة طفيفة ومحصورة في المقاسات الكبيرة.
+  */
+  .section {
+    @apply py-10 sm:py-12 md:py-16 xl:py-20;
+  }
+
+  .section-title {
+    @apply text-2xl font-bold text-ink md:text-3xl;
+  }
+
+  .badge {
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold;
+  }
+
+  .skeleton {
+    @apply relative overflow-hidden bg-blush/60;
+  }
+  .skeleton::after {
+    content: '';
+    @apply absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-transparent via-white/60 to-transparent;
+  }
+  html[dir='rtl'] .skeleton::after {
+    /* اتجاه اللمعان يتبع اتجاه القراءة */
+    @apply translate-x-full bg-gradient-to-l;
+  }
+
+  /* عنوان قسم مع خط زخرفي — يوحّد شكل العناوين عبر الصفحات */
+  .eyebrow {
+    @apply inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.18em] text-rose;
+  }
+
+  /* حاوية صورة تحافظ على النسبة وتمنع القفز أثناء التحميل */
+  .media-frame {
+    @apply relative overflow-hidden bg-blush/40;
+  }
+  .media-frame > img {
+    @apply h-full w-full object-cover;
+    transition: transform var(--dur-slow) var(--ease-out-soft);
+  }
+  .media-zoom:hover > img {
+    transform: scale(1.06);
+  }
+
+  .link-underline {
+    @apply relative after:absolute after:-bottom-0.5 after:right-0 after:h-px after:w-0 after:bg-rose after:transition-all after:duration-300 hover:after:w-full;
+  }
+  html[dir='ltr'] .link-underline {
+    @apply after:left-0 after:right-auto;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
+@layer utilities {
+  /**
+   * نص مخفي بصرياً لكنه مقروء لقارئات الشاشة.
+   * ضروري لتسميات الحقول والأزرار الأيقونية وحالات التحميل.
+   */
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border-width: 0;
+  }
+
+  /* يظهر عند التركيز بلوحة المفاتيح — يُستخدم لرابط "تخطي إلى المحتوى" */
+  .focus-reveal:focus-visible {
+    position: fixed;
+    top: 1rem;
+    inset-inline-start: 1rem;
+    z-index: 200;
+    width: auto;
+    height: auto;
+    margin: 0;
+    overflow: visible;
+    clip: auto;
+    white-space: normal;
+    @apply rounded-full bg-ink px-5 py-3 text-sm font-semibold text-white shadow-lift;
+  }
+
+  .text-balance {
+    text-wrap: balance;
+  }
+  .glass {
+    backdrop-filter: blur(12px);
+    background-color: rgba(255, 255, 255, 0.82);
+  }
+  .clamp-1 {
+    display: -webkit-box;
+    -webkit-line-clamp: 1;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .clamp-3 {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+}
+
+/* Swiper overrides */
+.swiper-button-next,
+.swiper-button-prev {
+  @apply !h-10 !w-10 !rounded-full !bg-white/90 !text-ink shadow-soft transition;
+}
+.swiper-button-next::after,
+.swiper-button-prev::after {
+  @apply !text-sm !font-black;
+}
+.swiper-button-next:hover,
+.swiper-button-prev:hover {
+  @apply !bg-rose !text-white;
+}
+.swiper-pagination-bullet {
+  @apply !bg-ink/25;
+}
+.swiper-pagination-bullet-active {
+  @apply !w-6 !rounded-full !bg-rose;
+}
+
+/* Toastify */
+.Toastify__toast {
+  border-radius: 14px;
+  font-family: inherit;
+  font-size: 14px;
+}
+.Toastify__progress-bar {
+  background: var(--color-rose) !important;
+}
+
+/* ============================================================
+   حركات دخول لطيفة للأقسام
+   ============================================================ */
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-rise {
+  animation: rise-in var(--dur-slow) var(--ease-out-soft) both;
+}
+
+/* تأخير متدرّج لعناصر الشبكة — يعطي إحساس "الظهور المتتابع" */
+.stagger > * {
+  animation: rise-in var(--dur-slow) var(--ease-out-soft) both;
+}
+.stagger > *:nth-child(1)  { animation-delay: 0ms; }
+.stagger > *:nth-child(2)  { animation-delay: 45ms; }
+.stagger > *:nth-child(3)  { animation-delay: 90ms; }
+.stagger > *:nth-child(4)  { animation-delay: 135ms; }
+.stagger > *:nth-child(5)  { animation-delay: 180ms; }
+.stagger > *:nth-child(6)  { animation-delay: 225ms; }
+.stagger > *:nth-child(7)  { animation-delay: 270ms; }
+.stagger > *:nth-child(8)  { animation-delay: 315ms; }
+
+/* ============================================================
+   احترام تفضيل تقليل الحركة (إمكانية وصول)
+   المستخدمون الذين يعانون من دوار الحركة يضبطون هذا في نظامهم،
+   وتجاهله يسبب إزعاجاً حقيقياً — نوقف كل الحركات بلا كسر التخطيط.
+   ============================================================ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .card-hover:hover,
+  .btn-primary:hover,
+  .btn-rose:hover {
+    transform: none !important;
+  }
+  .media-zoom:hover > img {
+    transform: none !important;
+  }
+}
+
+/*
+  غلاف بلوكات بانى الصفحة (SectionShell).
+  الحشوات تُقرأ من متغيّرات يضبطها الغلاف نفسه:
+  قيم الموبايل أولاً، وقيم سطح المكتب (عند وجودها) من 768px فأعلى.
+  بلا أي متغيّر = صفر حشوة (المكوّن الداخلي يتحكم بمساحته).
+*/
+.section-sec {
+  padding-top: var(--sec-pt-mobile, 0);
+  padding-bottom: var(--sec-pb-mobile, 0);
+}
+@media (min-width: 768px) {
+  .section-sec {
+    padding-top: var(--sec-pt-desktop, var(--sec-pt-mobile, 0));
+    padding-bottom: var(--sec-pb-desktop, var(--sec-pb-mobile, 0));
+  }
+}

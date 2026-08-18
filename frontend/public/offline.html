@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>لا يوجد اتصال — Al Zeina</title>
+  <!--
+    صفحة عدم الاتصال.
+    مستقلة تماماً: بلا خطوط أو صور خارجية، لأنها تُعرض تحديداً
+    عندما تكون الشبكة غير متاحة. أي مورد خارجي هنا سيفشل.
+  -->
+  <style>
+    :root { --ink:#111; --muted:#6b7280; --rose:#C89A8B; --cream:#FFF8F5; }
+    * { box-sizing:border-box; margin:0; padding:0; }
+    body {
+      min-height:100vh; display:grid; place-items:center; padding:24px;
+      background:var(--cream); color:var(--ink);
+      font-family:'Cairo','Segoe UI',system-ui,-apple-system,sans-serif;
+      text-align:center;
+    }
+    .card { max-width:420px; }
+    .icon {
+      width:96px; height:96px; margin:0 auto 24px; border-radius:50%;
+      background:#F8E8EA; display:grid; place-items:center;
+    }
+    svg { width:44px; height:44px; stroke:var(--rose); fill:none; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+    h1 { font-size:22px; font-weight:800; margin-bottom:10px; }
+    p { font-size:14px; line-height:1.9; color:var(--muted); margin-bottom:24px; }
+    button {
+      background:var(--ink); color:#fff; border:0; border-radius:999px;
+      padding:13px 32px; font-size:14px; font-weight:700; cursor:pointer;
+      font-family:inherit; transition:background .25s, transform .2s;
+    }
+    button:hover { background:var(--rose); }
+    button:active { transform:scale(.97); }
+    .hint { margin-top:18px; font-size:12px; color:var(--muted); }
+    .status { display:inline-flex; align-items:center; gap:7px; margin-top:14px; font-size:12px; font-weight:700; }
+    .dot { width:8px; height:8px; border-radius:50%; background:#EF4444; }
+    .online .dot { background:#10B981; }
+    @media (prefers-color-scheme: dark) {
+      body { background:#0F0F0F; color:#EDEDED; }
+      .icon { background:#242424; }
+      .hint, p { color:#A3A3A3; }
+    }
+    @media (prefers-reduced-motion: reduce) { button { transition:none; } }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <div class="icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24"><path d="M1 1l22 22M16.72 11.06A10.94 10.94 0 0119 12.55M5 12.55a10.94 10.94 0 015.17-2.39M10.71 5.05A16 16 0 0122.58 9M1.42 9a15.91 15.91 0 014.7-2.88M8.53 16.11a6 6 0 016.95 0M12 20h.01"/></svg>
+    </div>
+
+    <h1>لا يوجد اتصال بالإنترنت</h1>
+    <p>
+      يبدو أنكِ غير متصلة بالشبكة حالياً.
+      تحقّقي من الاتصال ثم أعيدي المحاولة — الصفحات التي تصفّحتِها من قبل قد تظل متاحة.
+    </p>
+
+    <button type="button" onclick="location.reload()">إعادة المحاولة</button>
+
+    <div class="status" id="status">
+      <span class="dot"></span>
+      <span id="statusText">غير متصل</span>
+    </div>
+
+    <p class="hint">Al Zeina — الزينة</p>
+  </main>
+
+  <script>
+    // نراقب عودة الاتصال ونعيد التحميل تلقائياً
+    var box = document.getElementById('status');
+    var text = document.getElementById('statusText');
+    function sync() {
+      if (navigator.onLine) {
+        box.classList.add('online');
+        text.textContent = 'عاد الاتصال — جاري التحديث…';
+        setTimeout(function () { location.reload(); }, 900);
+      } else {
+        box.classList.remove('online');
+        text.textContent = 'غير متصل';
+      }
+    }
+    window.addEventListener('online', sync);
+    window.addEventListener('offline', sync);
+    sync();
+  </script>
+</body>
+</html>

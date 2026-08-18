@@ -1,0 +1,11 @@
+import { Hono } from 'hono';
+import { all, first, run } from '../lib/db.js';
+import { ok, created, nowIso, uuid } from '../lib/response.js';
+import { protect } from '../middleware/auth.js';
+const app = new Hono();
+app.use('*', protect);
+app.get('/', async c => ok(c,{ wishlist: await all(c.env.DB.prepare('SELECT p.* FROM wishlist w JOIN products p ON p.id=w.productId WHERE w.userId=? ORDER BY w.createdAt DESC').bind(c.get('user').id)) }));
+app.post('/add', async c => { const { productId } = await c.req.json(); await run(c.env.DB.prepare('INSERT OR IGNORE INTO wishlist(userId,productId,createdAt) VALUES(?,?,?)').bind(c.get('user').id,productId,nowIso())); return created(c,{product:await first(c.env.DB.prepare('SELECT * FROM products WHERE id=?').bind(productId))}); });
+app.delete('/remove/:productId', async c => { await run(c.env.DB.prepare('DELETE FROM wishlist WHERE userId=? AND productId=?').bind(c.get('user').id,c.req.param('productId'))); return ok(c,{message:'تم الحذف'}); });
+app.post('/move-to-cart/:productId', async c => { await run(c.env.DB.prepare('DELETE FROM wishlist WHERE userId=? AND productId=?').bind(c.get('user').id,c.req.param('productId'))); return ok(c,{message:'تم النقل للسلة'}); });
+export default app;

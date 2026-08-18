@@ -1,0 +1,15 @@
+import { Hono } from 'hono';
+import { all, first, run } from '../lib/db.js';
+import { ok, created, fail, nowIso, stringify, uuid, parseJson } from '../lib/response.js';
+import { optionalAuth, protect, adminOrModerator } from '../middleware/auth.js';
+import { getSettings } from '../services/settings.js';
+
+const app = new Hono();
+app.get('/reasons', async c => ok(c,{ reasons: await all(c.env.DB.prepare('SELECT * FROM return_reasons WHERE isActive=1 ORDER BY sortOrder,name')) }));
+app.get('/check/:orderId', protect, async c => { const order=await first(c.env.DB.prepare('SELECT * FROM orders WHERE id=? AND userId=?').bind(c.req.param('orderId'),c.get('user').id)); if(!order) return fail(c,'الطلب غير موجود',404); const settings=await getSettings(c.env); return ok(c,{ eligible: order.orderStatus==='delivered', windowDays:settings.returns.windowDays, order:{orderNumber:order.orderNumber,total:order.total,createdAt:order.createdAt,status:order.orderStatus} }); });
+app.post('/', protect, async c => { const b=await c.req.json(); const order=await first(c.env.DB.prepare('SELECT * FROM orders WHERE id=? AND userId=?').bind(b.orderId,c.get('user').id)); if(!order) return fail(c,'الطلب غير موجود',404); if(order.orderStatus!=='delivered') return fail(c,'لا يمكن إرجاع هذا الطلب حالياً',400); const id=uuid(), now=nowIso(); await run(c.env.DB.prepare(`INSERT INTO return_requests(id,orderId,userId,reasonId,reason,items,status,refundAmount,note,images,notes,createdAt,updatedAt) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(id,order.id,c.get('user').id,b.reasonId||null,b.reason||'',stringify(b.items||[]),'pending',Number(b.refundAmount)||order.total,b.note||'',stringify(b.images||[]),'[]',now,now)); return created(c,{returnRequest:await first(c.env.DB.prepare('SELECT * FROM return_requests WHERE id=?').bind(id))}); });
+app.get('/my', protect, async c => ok(c,{ returns: await all(c.env.DB.prepare('SELECT * FROM return_requests WHERE userId=? ORDER BY createdAt DESC').bind(c.get('user').id)) }));
+app.get('/:id', protect, async c => ok(c,{ returnRequest: await first(c.env.DB.prepare('SELECT * FROM return_requests WHERE id=? AND userId=?').bind(c.req.param('id'),c.get('user').id)) }));
+app.put('/:id/cancel', protect, async c => { await run(c.env.DB.prepare("UPDATE return_requests SET status='closed',updatedAt=? WHERE id=? AND userId=?").bind(nowIso(),c.req.param('id'),c.get('user').id)); return ok(c,{message:'تم الإلغاء'}); });
+app.get('/:id/credit-note', adminOrModerator, async c => { const r=await first(c.env.DB.prepare('SELECT * FROM return_requests WHERE id=?').bind(c.req.param('id'))); if(!r) return fail(c,'غير موجود',404); const html=`<!doctype html><html dir="rtl"><meta charset="utf-8"><title>Credit Note</title><body style="font-family:Arial;padding:40px"><h1>إشعار دائن</h1><p>رقم الإرجاع: ${r.id}</p><p>المبلغ: ${r.refundAmount}</p><button onclick="window.print()" style="padding:10px 16px;background:#111;color:#fff;border:0;border-radius:8px">طباعة / حفظ PDF</button></body></html>`; return c.html(html); });
+export default app;

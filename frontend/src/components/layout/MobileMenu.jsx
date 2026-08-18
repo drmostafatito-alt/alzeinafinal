@@ -23,6 +23,7 @@ import { useI18n } from '@/i18n';
 import { useNavigation } from '@/hooks/useNavigation';
 import { useAuthStore } from '@/store/authStore';
 import { useUIStore } from '@/store/uiStore';
+import CountrySelector from '@/components/common/CountrySelector';
 import { localized } from '@/utils/helpers';
 
 export default function MobileMenu() {
@@ -169,6 +170,7 @@ export default function MobileMenu() {
         </div>
 
         <div className="border-t border-black/5 p-3">
+          <CountrySelector tone="menu" />
           <button
             type="button"
             onClick={toggleLang}

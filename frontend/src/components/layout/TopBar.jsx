@@ -3,6 +3,7 @@ import { FiPhone, FiTruck, FiRefreshCw, FiAward, FiMoon, FiSun } from 'react-ico
 import { applyGender, useI18n } from '@/i18n';
 import { useThemeStore } from '@/store/themeStore';
 import { useConfig } from '@/config/ConfigProvider';
+import CountrySelector from '@/components/common/CountrySelector';
 
 export default function TopBar() {
   const { t, lang, gender, toggleLang } = useI18n();
@@ -77,6 +78,10 @@ export default function TopBar() {
               {t('top.track')}
             </Link>
           ) : null}
+          {/* اختيار الدولة (EG/AE) — سطح المكتب فقط؛ نسخة الجوال في MobileMenu */}
+          <span className="hidden md:block">
+            <CountrySelector tone="topbar" />
+          </span>
           {/* تبديل الوضع الليلي — يظهر فقط إن سمح المدير بذلك */}
           {settings.theme?.allowUserToggle !== false ? (
             <button

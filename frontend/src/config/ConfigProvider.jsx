@@ -15,6 +15,8 @@ import { fontHref } from './fonts';
  * فلا توجد أي قيمة مكتوبة في الكود يحتاج المالك لتعديلها.
  */
 const ConfigContext = createContext(null);
+/** يُصدَّر فقط لتغليف اختبارات SSR — الاستهلاك دائماً عبر useConfig */
+export { ConfigContext };
 
 const FALLBACK = {
   settings: {
@@ -44,6 +46,7 @@ const FALLBACK = {
   },
   paymentMethods: [],
   governorates: [],
+  countries: [],
   pages: [],
   sections: [],
   popups: [],

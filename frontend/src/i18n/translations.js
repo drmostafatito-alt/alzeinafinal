@@ -94,6 +94,7 @@ export const translations = {
     'top.original': 'منتجات أصلية 100%',
     'top.support': 'دعم فني 24/7',
     'top.returns': 'استرجاع خلال 14 يوم',
+    'country.select': 'اختيار الدولة',
     'top.track': 'تتبع طلبك',
 
     // Home
@@ -968,6 +969,7 @@ export const translations = {
     'top.original': '100% authentic products',
     'top.support': '24/7 support',
     'top.returns': '14-day returns',
+    'country.select': 'Select country',
     'top.track': 'Track your order',
 
     'home.hero.badge': 'New Collection',

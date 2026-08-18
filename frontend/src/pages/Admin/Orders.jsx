@@ -358,7 +358,14 @@ export default function AdminOrders() {
         emptyDescription={t('a5.empty.orders.desc')}
         actions={(row) => (
           <RowActions
-            onView={() => setViewing(row)}
+            onView={async () => {
+              try {
+                const res = await client.get(`/admin/orders/${row._id || row.id}`);
+                setViewing(res.data?.data?.order || row);
+              } catch {
+                setViewing(row);
+              }
+            }}
             extra={
               <>
                 <button

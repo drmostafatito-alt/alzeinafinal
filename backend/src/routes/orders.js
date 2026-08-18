@@ -6,8 +6,8 @@ import { calculateShipping, calculatePaymentFee, calculateTax, couponValid, coup
 import { getSettings } from '../services/settings.js';
 import { countryMiddleware, methodAvailableInCountry, shippingForCountry } from '../services/country.js';
 import { productShape, productAvailableInCountry, unitPriceForCountry } from './catalog.js';
-import { qrSvgDataUri } from '../utils/qr.js';
 import { recordReceipt, notifyAdmins, auditLog } from '../services/paymentVerification.js';
+import { invoiceHtml } from '../lib/documents.js';
 
 const app = new Hono();
 /* المرحلة D/J: البلد يُحسم خادمياً قبل أي حساب أموال — لا ثقة بأي بلد/عملة من العميل */
@@ -77,7 +77,8 @@ app.post('/', optionalAuth, async c => {
     name: custName,
     phone: custPhone,
     email: custEmail,
-    governorateCode: body.governorateCode || body.governorateId || rawAddr?.governorateCode
+    governorateCode: body.governorateCode || body.governorateId || rawAddr?.governorateCode,
+    countryCode: country
   };
   if (!addr?.phone || !addr?.street || !addr?.city) return fail(c,'عنوان الشحن غير مكتمل',400);
   const method = await first(c.env.DB.prepare('SELECT * FROM payment_methods WHERE code=? AND isActive=1 AND isVisible=1').bind(String(body.paymentMethod).toLowerCase()));
@@ -267,124 +268,8 @@ app.put('/:id/cancel', async c => {
   for (const it of items) { stmts.push(c.env.DB.prepare('UPDATE products SET stock=stock+? WHERE id=?').bind(it.quantity,it.productId)); }
   await c.env.DB.batch(stmts); return c.json({status:'success',message:'تم إلغاء الطلب',data:{order:await serializeOrder(c.env,await first(c.env.DB.prepare('SELECT * FROM orders WHERE id=?').bind(row.id)))}});
 });
-app.get('/:id/invoice', async c => { const row=await first(c.env.DB.prepare('SELECT * FROM orders WHERE id=? AND userId=?').bind(c.req.param('id'),c.get('user').id)); if(!row) return fail(c,'الطلب غير موجود',404); const order=await serializeOrder(c.env,row); const settings=await getSettings(c.env); const html = invoiceHtml(order,settings); return c.html(html,200,{'Content-Type':'text/html; charset=utf-8'}); });
+app.get('/:id/invoice', async c => { const row=await first(c.env.DB.prepare('SELECT * FROM orders WHERE id=? AND userId=?').bind(c.req.param('id'),c.get('user').id)); if(!row) return fail(c,'الطلب غير موجود',404); const order=await serializeOrder(c.env,row); const settings=await getSettings(c.env); const html = invoiceHtml(order,settings); return c.html(html,200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store, private'}); });
 
-export function invoiceHtml(order, s) {
-  const addr = order.shippingAddress || {};
-  const fin = order.financialSnapshot || {};
-  const sym = fin.currencySymbol || (fin.country === 'AE' ? 'د.إ' : 'ج.م');
-  const countryBadge = fin.country === 'AE' || addr.countryCode === 'AE' ? '🇦🇪 الإمارات العربية المتحدة' : '🇪🇬 جمهورية مصر العربية';
-
-  const itemsRows = (order.items || [])
-    .map(
-      (i) => `
-    <tr>
-      <td style="padding:10px;border-bottom:1px solid #eee;">
-        <strong>${i.name || 'منتج'}</strong>
-        ${i.sku ? `<br/><span style="font-size:11px;color:#666;">SKU: ${i.sku}</span>` : ''}
-      </td>
-      <td style="padding:10px;border-bottom:1px solid #eee;text-align:center;">${i.quantity}</td>
-      <td style="padding:10px;border-bottom:1px solid #eee;text-align:left;">${i.price} ${sym}</td>
-      <td style="padding:10px;border-bottom:1px solid #eee;text-align:left;font-weight:bold;">${i.total} ${sym}</td>
-    </tr>`
-    )
-    .join('');
-
-  const fullAddr = [
-    addr.street,
-    addr.buildingNumber ? `مبنى ${addr.buildingNumber}` : null,
-    addr.floor ? `طابق ${addr.floor}` : null,
-    addr.apartment ? `شقة ${addr.apartment}` : null,
-    addr.district,
-    addr.city,
-    addr.governorateName || addr.governorate
-  ]
-    .filter(Boolean)
-    .join('، ');
-
-  return `<!doctype html>
-<html dir="rtl" lang="ar">
-<head>
-  <meta charset="utf-8">
-  <title>فاتورة ${order.orderNumber}</title>
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 24px; color: #111; background: #f9f9f9; }
-    .invoice-card { max-width: 800px; margin: 0 auto; background: #fff; border-radius: 16px; border: 1px solid #eee; padding: 32px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
-    .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #111; padding-bottom: 16px; margin-bottom: 24px; }
-    .company-title { font-size: 24px; font-weight: 800; margin: 0 0 4px; color: #111; }
-    .meta-box { background: #fdf8f5; border-radius: 12px; padding: 16px; margin-bottom: 24px; display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; font-size: 13px; }
-    table { width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 13px; }
-    th { background: #f5f5f5; padding: 10px; text-align: right; border-bottom: 2px solid #ddd; }
-    .totals { width: 280px; margin-margin-start: auto; margin-top: 16px; border-top: 2px solid #111; padding-top: 12px; font-size: 13px; }
-    .totals-row { display: flex; justify-content: space-between; padding: 4px 0; }
-    .grand-total { font-size: 16px; font-weight: 800; color: #c89a8b; border-top: 1px solid #ddd; padding-top: 8px; margin-top: 8px; }
-    .actions { display: flex; gap: 12px; margin-top: 28px; border-top: 1px solid #eee; padding-top: 20px; }
-    .btn { background: #111; color: #fff; border: none; padding: 10px 20px; border-radius: 99px; font-weight: bold; cursor: pointer; text-decoration: none; font-size: 13px; }
-    @media print { body { padding: 0; background: #fff; } .invoice-card { border: none; box-shadow: none; padding: 0; } .actions { display: none !important; } }
-  </style>
-</head>
-<body>
-  <div class="invoice-card">
-    <div class="header">
-      <div>
-        <div class="company-title">${s.invoice?.companyName || s.siteNameAr || 'الزينة — AL-ZEINA'}</div>
-        <div style="font-size: 12px; color: #666;">${s.invoice?.companyAddress || s.contact?.address || ''}</div>
-        <div style="font-size: 12px; color: #666;">هاتف: ${s.invoice?.companyPhone || s.contact?.phone || ''}</div>
-      </div>
-      <div style="text-align: left;">
-        <div style="font-size: 20px; font-weight: bold;">فاتورة شراء</div>
-        <div style="font-size: 14px; font-family: monospace; color: #333;">${order.orderNumber}</div>
-        <div style="font-size: 11px; color: #888;">${new Date(order.createdAt).toLocaleDateString('ar-EG')}</div>
-      </div>
-    </div>
-
-    <div class="meta-box">
-      <div>
-        <strong>العميل:</strong> ${order.shippingAddress?.name || order.user?.name || order.guestEmail || 'عميل المتجر'}<br/>
-        <strong>الهاتف:</strong> ${order.shippingAddress?.phone || order.guestPhone || '—'}<br/>
-        <strong>البريد:</strong> ${order.guestEmail || order.user?.email || '—'}
-      </div>
-      <div>
-        <strong>الدولة:</strong> ${countryBadge}<br/>
-        <strong>العنوان:</strong> ${fullAddr || '—'}<br/>
-        <strong>طريقة الدفع:</strong> ${order.paymentMethod || 'COD'}
-      </div>
-    </div>
-
-    <table>
-      <thead>
-        <tr>
-          <th>الصنف</th>
-          <th style="text-align:center;">الكمية</th>
-          <th style="text-align:left;">سعر الوحدة</th>
-          <th style="text-align:left;">الإجمالي</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${itemsRows}
-      </tbody>
-    </table>
-
-    <div class="totals" style="margin-right: auto; margin-left: 0;">
-      <div class="totals-row"><span>مجموع المنتجات:</span><span>${order.subtotal} ${sym}</span></div>
-      ${order.couponDiscount > 0 ? `<div class="totals-row" style="color:green;"><span>الخصم:</span><span>− ${order.couponDiscount} ${sym}</span></div>` : ''}
-      <div class="totals-row"><span>الشحن:</span><span>${order.shippingCost === 0 ? 'مجاني' : order.shippingCost + ' ' + sym}</span></div>
-      ${order.tax > 0 ? `<div class="totals-row"><span>الضريبة:</span><span>${order.tax} ${sym}</span></div>` : ''}
-      <div class="totals-row grand-total"><span>الإجمالي النهائي:</span><span>${order.total} ${sym}</span></div>
-    </div>
-
-    <div style="margin-top: 24px; text-align: center;">
-      <img src="${qrSvgDataUri(order.orderNumber + ' ' + order.id)}" alt="QR" style="width: 100px; height: 100px;" />
-    </div>
-
-    <div class="actions">
-      <button class="btn" onclick="window.print()">طباعة الفاتورة / حفظ PDF</button>
-    </div>
-  </div>
-  <script>window.onload = () => setTimeout(() => window.print(), 300);</script>
-</body>
-</html>`;
-}
-
+export { invoiceHtml };
 export { serializeOrder };
 export default app;

@@ -11,7 +11,7 @@ registerExtraTranslations('payments', paymentTranslations);
  * الرقم من إعدادات المتجر (لوحة الإدارة ← بيانات التواصل) — لا hardcode.
  * الرسالة تُجهَّز تلقائياً برقم الطلب فقط (لا بيانات حساسة إضافية).
  */
-export default function WhatsAppOrderButton({ orderNumber, className, size = 'md' }) {
+export default function WhatsAppOrderButton({ orderNumber, order, className, size = 'md' }) {
   const { t } = useI18n();
   const { settings } = useConfig();
   const c = settings.contact || {};
@@ -21,8 +21,10 @@ export default function WhatsAppOrderButton({ orderNumber, className, size = 'md
   const number = String(c.whatsapp).replace(/[^\d]/g, '');
   if (!number) return null;
 
+  const total = order?.total != null ? String(order.total) : '';
+  const method = order?.paymentMethod || '';
   const text = encodeURIComponent(
-    t('payment.whatsappMessage', { orderNumber: orderNumber || '' })
+    t('payment.whatsappMessage', { orderNumber: orderNumber || order?.orderNumber || '', total, method })
   );
 
   return (

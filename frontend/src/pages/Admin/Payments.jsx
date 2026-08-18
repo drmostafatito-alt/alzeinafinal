@@ -81,6 +81,7 @@ export default function AdminPayments() {
       const countries = [];
       if (payload.countryEG) countries.push('EG');
       if (payload.countryAE) countries.push('AE');
+      if (!countries.length) throw new Error('اختر دولة واحدة على الأقل');
 
       const body = {
         ...payload,
@@ -109,7 +110,7 @@ export default function AdminPayments() {
       setEditing(null);
       invalidate();
     },
-    onError: (e) => toast.error(e?.response?.data?.message || t('common.error'))
+    onError: (e) => toast.error(e?.response?.data?.message || e.message || t('common.error'))
   });
 
   const remove = useMutation({

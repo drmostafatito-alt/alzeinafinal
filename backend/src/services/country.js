@@ -85,7 +85,7 @@ export function shippingForCountry(baseShipping = {}, countryRow) {
     if (merged[k] !== undefined && merged[k] !== null && merged[k] !== '') merged[k] = Number(merged[k]);
   }
   if (merged.codEnabled !== undefined) merged.codEnabled = merged.codEnabled === true || merged.codEnabled === 1 ? true : false;
-  if (merged.freeShippingEnabled !== undefined) merged.freeShippingEnabled = merged.freeShippingEnabled !== false;
+  if (merged.freeShippingEnabled !== undefined) merged.freeShippingEnabled = merged.freeShippingEnabled === true || merged.freeShippingEnabled === 1;
   return merged;
 }
 
@@ -98,7 +98,8 @@ export function methodAvailableInCountry(method, countryCode) {
   if (!method) return false;
   const cfg = typeof method.config === 'string' ? parseJson(method.config, {}) : (method.config || {});
   const list = Array.isArray(cfg.countries) ? cfg.countries : null;
-  if (!list || !list.length) return true;
+  if (!list) return true; // missing key = historical "all countries"
+  if (!list.length) return false; // explicit empty assignment = nowhere
   return list.map(String).map((s) => s.toUpperCase()).includes(String(countryCode).toUpperCase());
 }
 

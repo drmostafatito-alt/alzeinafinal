@@ -4,6 +4,8 @@ import { ok, created, fail, nowIso, parseJson, stringify, uuid, bool } from '../
 import { admin, adminOrModerator } from '../middleware/auth.js';
 import { saveProduct, listProducts, productShape, FriendlyError } from './catalog.js';
 import { listVerifications, approveVerification, rejectVerification, auditLog } from '../services/paymentVerification.js';
+import { getSettings } from '../services/settings.js';
+import { invoiceHtml, waybillHtml } from '../lib/documents.js';
 
 const app = new Hono();
 
@@ -93,7 +95,19 @@ app.post('/coupons', adminOrModerator, async c => { const b=await c.req.json(); 
 app.put('/coupons/:id', adminOrModerator, async c => { const b=await c.req.json(), old=await first(c.env.DB.prepare('SELECT * FROM coupons WHERE id=?').bind(c.req.param('id'))); const row={...old,...b,freeShipping:b.freeShipping?1:0,isActive:b.isActive===false?0:1,userIds:stringify(b.userIds||parseJson(old.userIds,[])),categories:stringify(b.categories||parseJson(old.categories,[])),brands:stringify(b.brands||parseJson(old.brands,[])),products:stringify(b.products||parseJson(old.products,[])),excludedProducts:stringify(b.excludedProducts||parseJson(old.excludedProducts,[])),updatedAt:nowIso()}; delete row.id; delete row._id; /* hydrate() يضيف alias _id — كان يكسر UPDATE بـ no such column: _id */ const cols=Object.keys(row); await run(c.env.DB.prepare(`UPDATE coupons SET ${cols.map(x=>`${x}=?`).join(',')} WHERE id=?`).bind(...cols.map(k=>row[k]),c.req.param('id'))); return ok(c,{coupon:await first(c.env.DB.prepare('SELECT * FROM coupons WHERE id=?').bind(c.req.param('id')))}); });
 app.delete('/coupons/:id', adminOrModerator, async c => { await run(c.env.DB.prepare('DELETE FROM coupons WHERE id=?').bind(c.req.param('id'))); return ok(c,{message:'deleted'}); });
 
-app.get('/orders', async c => { const {page,limit,offset}=paginateQuery(c.req.query,20,100); const where=[]; const vals=[]; const q=c.req.query(); if(q.status) {where.push('orderStatus=?'); vals.push(q.status)} if(q.paymentStatus) {where.push('paymentStatus=?'); vals.push(q.paymentStatus)} if(q.search) {where.push('(orderNumber LIKE ? OR guestEmail LIKE ? OR guestPhone LIKE ?)'); vals.push(`%${q.search}%`,`%${q.search}%`,`%${q.search}%`)} const ws=where.length?`WHERE ${where.join(' AND ')}`:''; const total=(await c.env.DB.prepare(`SELECT COUNT(*) n FROM orders ${ws}`).bind(...vals).first()).n; const orders=await all(c.env.DB.prepare(`SELECT * FROM orders ${ws} ORDER BY createdAt DESC LIMIT ? OFFSET ?`).bind(...vals,limit,offset)); return ok(c,{orders,pagination:{page,limit,total,pages:Math.ceil(total/limit)}}); });
+app.get('/orders', async c => {
+  const { serializeOrder } = await import('./orders.js');
+  const {page,limit,offset}=paginateQuery(c.req.query,20,100);
+  const where=[]; const vals=[]; const q=c.req.query();
+  if(q.status) {where.push('orderStatus=?'); vals.push(q.status)}
+  if(q.paymentStatus) {where.push('paymentStatus=?'); vals.push(q.paymentStatus)}
+  if(q.search) {where.push('(orderNumber LIKE ? OR guestEmail LIKE ? OR guestPhone LIKE ?)'); vals.push(`%${q.search}%`,`%${q.search}%`,`%${q.search}%`)}
+  const ws=where.length?`WHERE ${where.join(' AND ')}`:'';
+  const total=(await c.env.DB.prepare(`SELECT COUNT(*) n FROM orders ${ws}`).bind(...vals).first()).n;
+  const rows=await all(c.env.DB.prepare(`SELECT * FROM orders ${ws} ORDER BY createdAt DESC LIMIT ? OFFSET ?`).bind(...vals,limit,offset));
+  const orders=await Promise.all(rows.map((r)=>serializeOrder(c.env,r,false)));
+  return ok(c,{orders,pagination:{page,limit,total,pages:Math.ceil(total/limit)}});
+});
 app.get('/payment-verifications', adminOrModerator, async c => {
   const data = await listVerifications(c.env, c.req.query());
   return ok(c, { ...data, orders: data.verifications.map(v => ({ ...v, _id: v.orderId, orderId: v.orderId, paymentProof: v.receiptUrl, paymentReference: v.reference, paymentMethodRef: { id: v.paymentMethodId, name: v.methodName, nameEn: v.methodNameEn, accountNumber: v.accountNumber } })) });
@@ -131,8 +145,22 @@ app.get('/orders/:id/timeline', adminOrModerator, async c => { const o=await fir
 app.post('/orders/bulk-status', adminOrModerator, async c => { const b=await c.req.json(); await c.env.DB.batch((b.ids||[]).map(id=>c.env.DB.prepare('UPDATE orders SET orderStatus=?,updatedAt=? WHERE id=?').bind(b.status,nowIso(),id))); return ok(c,{updated:(b.ids||[]).length}); });
 app.post('/orders/:id/notes', adminOrModerator, async c => { const b=await c.req.json(), o=await first(c.env.DB.prepare('SELECT adminNotes FROM orders WHERE id=?').bind(c.req.param('id'))); const notes=parseJson(o.adminNotes,[]); notes.push({id:uuid(),body:b.note||b.body,at:nowIso(),author:c.get('user')?.name}); await run(c.env.DB.prepare('UPDATE orders SET adminNotes=?,updatedAt=? WHERE id=?').bind(stringify(notes),nowIso(),c.req.param('id'))); return created(c,{note:notes.at(-1)}); });
 app.delete('/orders/:id/notes/:noteId', adminOrModerator, async c => { const o=await first(c.env.DB.prepare('SELECT adminNotes FROM orders WHERE id=?').bind(c.req.param('id'))); const notes=parseJson(o.adminNotes,[]).filter(n=>n.id!==c.req.param('noteId')); await run(c.env.DB.prepare('UPDATE orders SET adminNotes=?,updatedAt=? WHERE id=?').bind(stringify(notes),nowIso(),c.req.param('id'))); return ok(c,{}); });
-app.get('/orders/:id/invoice', adminOrModerator, async c => c.redirect(`/api/v1/orders/${c.req.param('id')}/invoice`));
-app.get('/orders/:id/label', adminOrModerator, async c => { const o=await first(c.env.DB.prepare('SELECT orderNumber,shippingAddress,trackingNumber FROM orders WHERE id=?').bind(c.req.param('id'))); const a=parseJson(o.shippingAddress,{}); return c.html(`<!doctype html><html dir="rtl"><meta charset="utf-8"><body style="font-family:Arial;padding:24px"><h2>شحنة ${o.orderNumber}</h2><p>${a.governorate||''} - ${a.city||''} - ${a.street||''}</p><p>${a.phone||''}</p><p>تتبع: ${o.trackingNumber||'-'}</p><button onclick="window.print()" style="padding:10px 16px">طباعة البوليصة</button></body></html>`); });
+app.get('/orders/:id/invoice', adminOrModerator, async c => {
+  const { serializeOrder } = await import('./orders.js');
+  const row = await first(c.env.DB.prepare('SELECT * FROM orders WHERE id=?').bind(c.req.param('id')));
+  if (!row) return fail(c, 'الطلب غير موجود', 404);
+  const order = await serializeOrder(c.env, row);
+  const settings = await getSettings(c.env);
+  return c.html(invoiceHtml(order, settings), 200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store, private' });
+});
+app.get('/orders/:id/label', adminOrModerator, async c => {
+  const { serializeOrder } = await import('./orders.js');
+  const row = await first(c.env.DB.prepare('SELECT * FROM orders WHERE id=?').bind(c.req.param('id')));
+  if (!row) return fail(c, 'الطلب غير موجود', 404);
+  const order = await serializeOrder(c.env, row);
+  const settings = await getSettings(c.env);
+  return c.html(waybillHtml(order, settings), 200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store, private' });
+});
 app.put('/orders/:id/status', adminOrModerator, async c => { const b=await c.req.json(); const o=await first(c.env.DB.prepare('SELECT * FROM orders WHERE id=?').bind(c.req.param('id'))); if(!o) return fail(c,'not found',404); const hist=parseJson(o.statusHistory,[]); hist.push({status:b.status||b.orderStatus,at:nowIso(),note:b.note,by:c.get('user').id}); await run(c.env.DB.prepare('UPDATE orders SET orderStatus=?, statusHistory=?, updatedAt=? WHERE id=?').bind(b.status||b.orderStatus,stringify(hist),nowIso(),o.id)); return ok(c,{message:'updated'}); });
 app.put('/orders/:id/shipping', adminOrModerator, async c => { const b=await c.req.json(); await run(c.env.DB.prepare('UPDATE orders SET trackingNumber=?, shippingCompany=?, updatedAt=? WHERE id=?').bind(b.trackingNumber,b.shippingCompany,nowIso(),c.req.param('id'))); return ok(c,{message:'updated'}); });
 app.put('/orders/:id/payment-status', adminOrModerator, async c => { const b=await c.req.json(); await run(c.env.DB.prepare('UPDATE orders SET paymentStatus=?, updatedAt=? WHERE id=?').bind(b.paymentStatus,nowIso(),c.req.param('id'))); return ok(c,{message:'updated'}); });
@@ -168,7 +196,12 @@ app.post('/orders/:id/payment-verification', adminOrModerator, async c => {
   return ok(c, { message: 'updated' });
 });
 app.post('/orders/:id/resend-invoice', adminOrModerator, c => ok(c,{ sent:true, message:'No email provider configured; invoice remains available for download/print.' }));
-app.get('/orders/:id', adminOrModerator, async c => { const o=await first(c.env.DB.prepare('SELECT * FROM orders WHERE id=?').bind(c.req.param('id'))); if(!o) return fail(c,'الطلب غير موجود',404); o.items=await all(c.env.DB.prepare('SELECT * FROM order_items WHERE orderId=?').bind(o.id)); o.shippingAddress=parseJson(o.shippingAddress,{}); o.financialSnapshot=parseJson(o.financialSnapshot,{}); o.statusHistory=parseJson(o.statusHistory,[]); o.activity=parseJson(o.activity,[]); o.adminNotes=parseJson(o.adminNotes,[]); o.paymentVerification=parseJson(o.paymentVerification,{}); return ok(c,{order:o}); });
+app.get('/orders/:id', adminOrModerator, async c => {
+  const { serializeOrder } = await import('./orders.js');
+  const o=await first(c.env.DB.prepare('SELECT * FROM orders WHERE id=?').bind(c.req.param('id')));
+  if(!o) return fail(c,'الطلب غير موجود',404);
+  return ok(c,{order:await serializeOrder(c.env,o,true)});
+});
 
 app.get('/users', adminOrModerator, async c => { const {page,limit,offset}=paginateQuery(c.req.query,20,100); const search=c.req.query('search'); let where="WHERE role='user'"; const vals=[]; if(search){where+=' AND (name LIKE ? OR email LIKE ? OR phone LIKE ?)'; vals.push(`%${search}%`,`%${search}%`,`%${search}%`)} const total=(await c.env.DB.prepare(`SELECT COUNT(*) n FROM users ${where}`).bind(...vals).first()).n; const users=await all(c.env.DB.prepare(`SELECT * FROM users ${where} ORDER BY createdAt DESC LIMIT ? OFFSET ?`).bind(...vals,limit,offset)); users.forEach(u=>delete u.passwordHash); return ok(c,{users,pagination:{page,limit,total,pages:Math.ceil(total/limit)}}); });
 app.get('/users/:id', adminOrModerator, async c => { const u=await first(c.env.DB.prepare('SELECT * FROM users WHERE id=?').bind(c.req.param('id'))); if(!u) return fail(c,'not found',404); delete u.passwordHash; u.addresses=await all(c.env.DB.prepare('SELECT * FROM addresses WHERE userId=?').bind(u.id)); u.orders=await all(c.env.DB.prepare('SELECT id,orderNumber,total,orderStatus,paymentStatus,createdAt FROM orders WHERE userId=? ORDER BY createdAt DESC').bind(u.id)); return ok(c,{user:u}); });

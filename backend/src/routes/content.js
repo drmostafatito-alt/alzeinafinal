@@ -147,6 +147,7 @@ app.get('/storefront/shipping/quote', async c => {
   const country = c.get('country');
   const code = c.req.query('governorateCode') || c.req.query('governorate') || c.req.query('governorateId');
   const subtotal = Number(c.req.query('subtotal')) || 0;
+  if (!code) return c.json({ status: 'error', message: 'يجب اختيار المحافظة' }, 400);
   const quote = await calculateShipping(c.env, s, { governorateCode: code, governorateId: code, subtotal, country, countryRow });
   if (quote.invalid || !quote.governorate || !quote.governorate.isActive) {
     return c.json({ status: 'error', message: 'المحافظة المختارة غير متاحة' }, 400);

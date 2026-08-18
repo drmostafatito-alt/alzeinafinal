@@ -60,9 +60,10 @@ export async function calculateShipping(env, settings, { governorateCode, govern
     }
   }
 
-  // الشحن المجاني ينطبق فقط إذا كان مفعّلاً صراحة وله حد أدنى > 0 والمبلغ حققه
+  // الشحن المجاني فقط عند تفعيل صريح + عتبة > 0 + بلوغ العتبة. التعطيل لا يُسقط السعر أبداً.
   const freeThreshold = Number(ship.freeShippingThreshold) || 0;
-  const isFree = ship.freeShippingEnabled !== false && freeThreshold > 0 && amount >= freeThreshold;
+  const freeOn = ship.freeShippingEnabled === true || ship.freeShippingEnabled === 1;
+  const isFree = freeOn && freeThreshold > 0 && amount >= freeThreshold;
   if (isFree) {
     return { cost: 0, free: true, governorate, estimate };
   }

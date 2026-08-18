@@ -41,8 +41,7 @@ export async function calculateShipping(env, settings, { governorateCode, govern
   if (governorate && governorate.zoneId) {
     const z = await first(env.DB.prepare('SELECT * FROM shipping_zones WHERE id=? AND isActive=1').bind(governorate.zoneId));
     if (z) {
-      cost = z.cost;
-      if (z.freeThreshold && amount >= z.freeThreshold) cost = 0;
+      cost = Number(z.cost) || 0;
       if (z.estimatedDaysMin) estimate.min = z.estimatedDaysMin;
       if (z.estimatedDaysMax) estimate.max = z.estimatedDaysMax;
     }
@@ -52,23 +51,16 @@ export async function calculateShipping(env, settings, { governorateCode, govern
   for (const z of zones) {
     const ids = parseJson(z.governorateIds, []);
     if (ids.includes(governorate?.id) || ids.includes(governorate?.code) || ids.includes(governorateCode)) {
-      cost = z.cost;
-      if (z.freeThreshold && amount >= z.freeThreshold) cost = 0;
+      cost = Number(z.cost) || 0;
       if (z.estimatedDaysMin) estimate.min = z.estimatedDaysMin;
       if (z.estimatedDaysMax) estimate.max = z.estimatedDaysMax;
       break;
     }
   }
 
-  // الشحن المجاني فقط عند تفعيل صريح + عتبة > 0 + بلوغ العتبة. التعطيل لا يُسقط السعر أبداً.
-  const freeThreshold = Number(ship.freeShippingThreshold) || 0;
-  const freeOn = ship.freeShippingEnabled === true || ship.freeShippingEnabled === 1;
-  const isFree = freeOn && freeThreshold > 0 && amount >= freeThreshold;
-  if (isFree) {
-    return { cost: 0, free: true, governorate, estimate };
-  }
-
-  return { cost: round2(afterFree), free: afterFree === 0, governorate, estimate };
+  /* Country toggle is authoritative. Zone freeThreshold must never zero shipping. */
+  const { cost: finalCost, free } = applyFreeShipping(ship, amount, cost);
+  return { cost: finalCost, free, governorate, estimate };
 }
 
 /** Country-aware free shipping. Threshold is never hardcoded. Disabled = always charge. */

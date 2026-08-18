@@ -34,7 +34,9 @@ export const TABLE_COLUMNS = {
   banners: ['id','title','titleEn','subtitle','subtitleEn','image','link','buttonText','buttonTextEn','position','sortOrder','isActive','startDate','endDate','createdAt','updatedAt'],
   'shipping-zones': ['id','name','nameEn','governorateIds','cost','freeThreshold','estimatedDaysMin','estimatedDaysMax','isActive','sortOrder','createdAt','updatedAt'],
   'shipping-companies': ['id','code','name','nameEn','trackingUrl','isActive','sortOrder','config','createdAt','updatedAt'],
-  governorates: ['id','code','name','nameEn','isActive','sortOrder','shippingCost','codEnabled','zoneId','createdAt','updatedAt'],
+  /* Gate 2: countryCode كان غائباً من القائمة ⇒ كل إمارة تُنشأ من الإدارة تُسقط
+     بلدها ويستلم عمود D1 الافتراضي 'EG' فتُسجَّل مصرية (إصلاح Gate 0/RC-admin). */
+  governorates: ['id','code','name','nameEn','countryCode','isActive','sortOrder','shippingCost','codEnabled','zoneId','createdAt','updatedAt'],
   'payment-methods': ['id','code','name','nameEn','description','instructions','logo','type','isActive','isVisible','requiresProof','requiresReference','feeType','feeValue','sortOrder','config','createdAt','updatedAt'],
   pages: ['id','title','titleEn','slug','content','contentEn','status','isActive','metaTitle','metaDescription','sortOrder','showInFooter','data','createdAt','updatedAt'],
   'home-sections': ['id','type','title','titleEn','isActive','sortOrder','data','createdAt','updatedAt'],
@@ -129,7 +131,11 @@ const normalize = (resource, payload, existing = {}) => {
     out.slug = slugify(out.slug || out.titleEn || out.title || '');
   }
   if (resource === 'governorates' && !out.code) out.code = String(out.nameEn||out.name||'').toUpperCase().replace(/\s+/g,'-').slice(0,20) || uuid();
-  if (resource === 'governorates' && !out.countryCode) out.countryCode = 'EG';
+  /* Gate 2: بلد المحافظة/الإمارة مقيّد برمزين معروفين — مصر تبقى EG والإمارات تبقى AE */
+  if (resource === 'governorates') {
+    out.countryCode = String(out.countryCode || 'EG').trim().toUpperCase();
+    if (!['EG', 'AE'].includes(out.countryCode)) out.countryCode = 'EG';
+  }
   if (resource === 'shipping-zones' && !out.governorateIds) out.governorateIds = '[]';
   /* البلدان: تحققات صارمة للكود والعملة — جدول حرج للمتجر كله */
   if (resource === 'countries') {

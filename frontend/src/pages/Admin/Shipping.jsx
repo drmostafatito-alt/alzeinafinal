@@ -49,7 +49,9 @@ export default function AdminShipping() {
   });
   const governorates = govData?.governorates || [];
   const [dirty, setDirty] = useState({});
-  const govForm = useForm({ defaultValues: { name:'', nameEn:'', code:'', shippingCost:50, codEnabled:true } });
+  /* Gate 2: البلد حقل إلزامي عند الإنشاء (مصر افتراضي) — كان يُسقَط خلفياً
+     فتُسجَّل الإمارات الجديدة مصرية بالخطأ. القائمة الخلفية باتت تقبل countryCode. */
+  const govForm = useForm({ defaultValues: { name:'', nameEn:'', code:'', countryCode:'EG', shippingCost:50, codEnabled:true } });
   const saveGov = useMutation({ mutationFn: (v) => client.post('/admin/governorates', v), onSuccess: () => { toast.success(t('admin.saved')); govForm.reset(); qc.invalidateQueries({queryKey:['admin','governorates']}); }, onError:(e)=>toast.error(e?.response?.data?.message||t('common.error')) });
 
   const saveGovs = useMutation({
@@ -252,10 +254,15 @@ export default function AdminShipping() {
 
           <div className="rounded-2xl border border-black/5 bg-white p-5 shadow-soft">
             <h3 className="mb-4 text-sm font-bold text-ink">{t('common.add')} / {t('common.edit')}</h3>
-            <form onSubmit={govForm.handleSubmit((v) => saveGov.mutate({ ...v, isActive: true, codEnabled: v.codEnabled ?? true, shippingCost: Number(v.shippingCost || 50) }))} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            <form onSubmit={govForm.handleSubmit((v) => saveGov.mutate({ ...v, isActive: true, codEnabled: v.codEnabled ?? true, shippingCost: Number(v.shippingCost || 50) }))} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
               <Input label={`${t('common.name')} (AR)`} required {...govForm.register('name', { required: true })} />
               <Input label={`${t('common.name')} (EN)`} dir="ltr" {...govForm.register('nameEn')} />
               <Input label="Code" dir="ltr" required {...govForm.register('code', { required: true })} />
+              <Select
+                label={t('gov.country')}
+                options={[{ value: 'EG', label: 'مصر 🇪🇬' }, { value: 'AE', label: 'الإمارات 🇦🇪' }]}
+                {...govForm.register('countryCode')}
+              />
               <Input label={t('cart.shipping')} type="number" {...govForm.register('shippingCost')} />
               <div className="flex items-end gap-3">
                 <Checkbox label={t('checkout.cod')} {...govForm.register('codEnabled')} />

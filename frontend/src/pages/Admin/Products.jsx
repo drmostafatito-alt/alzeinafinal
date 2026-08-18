@@ -73,8 +73,11 @@ export default function AdminProducts() {
   /* التبويب النشط داخل نموذج المنتج */
   const [formTab, setFormTab] = useState('general');
 
-  const { register, handleSubmit, reset, control, watch, formState: { errors } } = useForm();
+  const { register, handleSubmit, reset, control, watch, getValues, formState: { errors } } = useForm();
   const status = watch('status');
+  /* Gate 2: مراقبة حقول الإمارات لعرض مؤشر «غير مُعَدَّة» وربط التحقق المتبادل */
+  const watchPriceAE = watch('priceAE');
+  const watchIsActiveAE = watch('isActiveAE');
 
   const invalidate = useCallback(() => {
     qc.invalidateQueries({ queryKey: ['admin', 'products'] });
@@ -137,6 +140,13 @@ export default function AdminProducts() {
             name: e.name || '', nameEn: e.nameEn || '', slug: e.slug || '', sku: e.sku || '',
             category: e.category?._id || e.category || '', brand: e.brand?._id || e.brand || '',
             price: e.price ?? '', oldPrice: e.oldPrice ?? '', cost: e.cost ?? '',
+            /* Gate 2: الإمارات تُقرأ كما خُزِّنت تماماً — بلا اختراع سعر وبلا نسخ من مصر.
+               null ⇒ حقل فارغ («الإمارات غير مُعَدَّة»). عرض «متاح في الإمارات» يعكس الحقيقة
+               الفعلية للبيع (علم + سعر): صفوف قديمة من ترحيل 0020 علمها الافتراضي 1 مع
+               priceAE=NULL — عرضها كمفعّلة كان سيضلّل؛ البوابة الخلفية أصلاً لا تعرضها. */
+            priceAE: e.priceAE ?? '', oldPriceAE: e.oldPriceAE ?? '',
+            isActiveAE: Boolean(e.isActiveAE) && e.priceAE != null && e.priceAE !== '',
+            availableEG: e.status ? e.status === 'published' : e.isActive !== false,
             stock: e.stock ?? 0, mainImage: e.mainImage || '',
             images: Array.isArray(e.images) ? e.images : [],
             description: e.description || '', descriptionEn: e.descriptionEn || '',
@@ -151,6 +161,9 @@ export default function AdminProducts() {
         : {
             name: '', nameEn: '', slug: '', sku: '', category: '', brand: '',
             price: '', oldPrice: '', cost: '', stock: 0, mainImage: '', images: [],
+            /* Gate 2: منتج جديد — مصر متاحة افتراضياً، الإمارات مغلقة وبلا سعر
+               (لا تفعيل تلقائي للإمارات إطلاقاً). */
+            priceAE: '', oldPriceAE: '', isActiveAE: false, availableEG: true,
             description: '', descriptionEn: '', shortDescription: '', shortDescriptionEn: '',
             metaTitle: '', metaDescription: '', tags: '',
             status: 'published', publishAt: '',
@@ -164,8 +177,15 @@ export default function AdminProducts() {
     const main = v.mainImage || gallery[0] || '';
     const images = main ? [main, ...gallery.filter((g) => g !== main)] : gallery;
 
+    /* Gate 2: «متاح في مصر» مربوط ثنائياً بحالة النشر — لا حالة متناقضة:
+       إلغاؤه مع «منشور» يعني مسودة، وتفعيله مع «مسودة» يعني نشراً. (المجدول لا يُمس) */
+    let nextStatus = v.status;
+    if (!v.availableEG && nextStatus === 'published') nextStatus = 'draft';
+    if (v.availableEG && nextStatus === 'draft') nextStatus = 'published';
+
     res.save({
       ...v,
+      status: nextStatus,
       slug: v.slug || slugify(v.nameEn || v.name),
       price: Number(v.price),
       oldPrice: v.oldPrice ? Number(v.oldPrice) : undefined,
@@ -173,9 +193,14 @@ export default function AdminProducts() {
       stock: Number(v.stock),
       mainImage: main,
       images,
-      publishAt: v.status === 'scheduled' && v.publishAt ? new Date(v.publishAt).toISOString() : undefined,
+      publishAt: nextStatus === 'scheduled' && v.publishAt ? new Date(v.publishAt).toISOString() : undefined,
       // isActive يُشتق من حالة النشر حتى لا تتعارض القيمتان
-      isActive: v.status === 'published',
+      isActive: nextStatus === 'published',
+      /* Gate 2: الإمارات مستقلة تماماً — '' تعني «بلا سعر إماراتي» (الخادم يخزّن NULL)
+         ولا يُحسب أي سعر من الآخر. التحقق يمنع تفعيل التوفر بلا سعر. */
+      priceAE: v.priceAE === '' || v.priceAE == null ? '' : Number(v.priceAE),
+      oldPriceAE: v.oldPriceAE === '' || v.oldPriceAE == null ? '' : Number(v.oldPriceAE),
+      isActiveAE: Boolean(v.isActiveAE),
       tags: String(v.tags || '').split(',').map((x) => x.trim()).filter(Boolean)
     });
   };
@@ -190,6 +215,8 @@ export default function AdminProducts() {
     name: 'general', nameEn: 'general', description: 'general', descriptionEn: 'general',
     shortDescription: 'general', shortDescriptionEn: 'general',
     price: 'pricing', oldPrice: 'pricing', cost: 'pricing',
+    /* Gate 2: حقول الإمارات في تبويب التسعير أيضاً — أخطاؤها تقفز لنفس التبويب */
+    priceAE: 'pricing', oldPriceAE: 'pricing', isActiveAE: 'pricing',
     stock: 'inventory',
     mainImage: 'images', images: 'images',
     slug: 'seo', sku: 'seo', metaTitle: 'seo', metaDescription: 'seo'
@@ -237,6 +264,41 @@ export default function AdminProducts() {
           {p.stock}
         </span>
       )
+    },
+    {
+      /* Gate 2: مؤشر مضغوط يوضح حالة المنتج في البلدين بسطر واحد لكل بلد —
+         بقراءة نفس حقول الخادم (لا يخلط ولا يفترض). */
+      key: 'countries',
+      header: t('a6.col.countries'),
+      hideOnMobile: true,
+      render: (p) => {
+        const egOn = p.status ? p.status === 'published' : (p.isActive !== false && p.isActive !== 0);
+        const aeOn = Boolean(p.isActiveAE) && p.priceAE != null;
+        return (
+          <div className="space-y-1 text-[11px] font-semibold leading-tight">
+            <div className="flex items-center gap-1.5 whitespace-nowrap">
+              <span aria-hidden>🇪🇬</span>
+              <span className="font-en">{p.price}</span>
+              <span className="text-ink-muted">ج.م</span>
+              {egOn
+                ? <span className="text-emerald-600" title={t('a6.availability.eg')}>✓</span>
+                : <span className="text-stone-400" title={t('a6.unavailable')}>✗</span>}
+            </div>
+            <div className="flex items-center gap-1.5 whitespace-nowrap">
+              <span aria-hidden>🇦🇪</span>
+              {aeOn ? (
+                <>
+                  <span className="font-en">{p.priceAE}</span>
+                  <span className="text-ink-muted">د.إ</span>
+                  <span className="text-emerald-600" title={t('a6.availability.ae')}>✓</span>
+                </>
+              ) : (
+                <span className="text-ink-muted">{t('a6.unavailable')}</span>
+              )}
+            </div>
+          </div>
+        );
+      }
     },
     {
       key: 'status',
@@ -363,6 +425,12 @@ export default function AdminProducts() {
           {t('a3.bulkPrice')}
         </button>
 
+        {/* Gate 2: إجراءات الإمارات الجماعية — نفس endpoint الموجود POST /admin/products/bulk.
+             «نسخ سعر مصر» نسخ رقمي حرفي (لا FX) ولا يفعّل الإمارات تلقائياً — يظهر تأكيد صريح. */}
+        <button type="button" className={bulkBtn} onClick={() => bulkAction('enable-ae')}>{t('a6.bulk.enableAE')}</button>
+        <button type="button" className={bulkBtn} onClick={() => bulkAction('disable-ae')}>{t('a6.bulk.disableAE')}</button>
+        <button type="button" className={bulkBtn} onClick={() => setBulkConfirm('copyAE')}>{t('a6.bulk.copyEGtoAE')}</button>
+
         <button
           type="button"
           onClick={() => setBulkConfirm('delete')}
@@ -473,15 +541,74 @@ export default function AdminProducts() {
               </div>
             </div>
 
-            {/* ---------- التسعير ---------- */}
+            {/* ---------- التسعير (Gate 2: بطاقة لكل بلد — لا تحويل عملة إطلاقاً) ---------- */}
             <div className={cn(formTab !== 'pricing' && 'hidden')}>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Input
-                  label={t('common.price')} type="number" step="0.01" required error={errors.price?.message}
-                  {...register('price', { required: t('valid.required'), min: { value: 0, message: t('valid.min', { n: 0 }) } })}
-                />
-                <Input label={t('a6.oldPrice')} type="number" step="0.01" hint={t('a6.oldPriceHint')} {...register('oldPrice')} />
-                <Input label={t('a3.cost')} type="number" step="0.01" hint={t('a6.costHint')} {...register('cost')} />
+              <p className="rounded-xl bg-cream px-4 py-2.5 text-xs font-semibold leading-relaxed text-ink-muted">
+                {t('a6.noAutoFx')}
+              </p>
+              <div className="grid gap-4 lg:grid-cols-2">
+                {/* بطاقة مصر — الجنيه المصري */}
+                <section className="overflow-hidden rounded-2xl border border-black/10 bg-white">
+                  <header className="flex items-center justify-between gap-2 border-b border-black/5 bg-cream/70 px-4 py-3">
+                    <span className="text-sm font-extrabold text-ink">{t('a6.country.eg')}</span>
+                    <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-bold text-ink-muted ring-1 ring-black/10">
+                      {t('a6.currency.eg')}
+                    </span>
+                  </header>
+                  <div className="space-y-4 p-4">
+                    <Input
+                      label={t('a6.price.current')} type="number" step="0.01" required error={errors.price?.message}
+                      {...register('price', { required: t('valid.required'), min: { value: 0, message: t('valid.min', { n: 0 }) } })}
+                    />
+                    <Input label={t('a6.price.old')} type="number" step="0.01" hint={t('a6.oldPriceHint')} {...register('oldPrice')} />
+                    <Input label={t('a3.cost')} type="number" step="0.01" hint={t('a6.costHint')} {...register('cost')} />
+                    <div>
+                      <Checkbox label={t('a6.availability.eg')} {...register('availableEG')} />
+                      <p className="ms-7 text-[11px] text-ink-muted">{t('a6.availability.egHint')}</p>
+                    </div>
+                  </div>
+                </section>
+
+                {/* بطاقة الإمارات — الدرهم الإماراتي (مستقلة تماماً) */}
+                <section className="overflow-hidden rounded-2xl border border-black/10 bg-white">
+                  <header className="flex items-center justify-between gap-2 border-b border-black/5 bg-cream/70 px-4 py-3">
+                    <span className="text-sm font-extrabold text-ink">{t('a6.country.ae')}</span>
+                    <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-bold text-ink-muted ring-1 ring-black/10">
+                      {t('a6.currency.ae')}
+                    </span>
+                  </header>
+                  <div className="space-y-4 p-4">
+                    <Input
+                      label={t('a6.price.current')} type="number" step="0.01" error={errors.priceAE?.message}
+                      {...register('priceAE', {
+                        validate: (x) => x === '' || x == null || (Number.isFinite(Number(x)) && Number(x) >= 0) || t('valid.min', { n: 0 })
+                      })}
+                    />
+                    <Input
+                      label={t('a6.price.old')} type="number" step="0.01" hint={t('a6.oldPriceHint')} error={errors.oldPriceAE?.message}
+                      {...register('oldPriceAE', {
+                        validate: (x) => x === '' || x == null || (Number.isFinite(Number(x)) && Number(x) >= 0) || t('valid.min', { n: 0 })
+                      })}
+                    />
+                    <div>
+                      <Checkbox
+                        label={t('a6.availability.ae')}
+                        {...register('isActiveAE', {
+                          validate: (chk) => {
+                            if (!chk) return true;
+                            const p = getValues('priceAE');
+                            return (p !== '' && p != null && Number.isFinite(Number(p)) && Number(p) >= 0) || t('a6.ae.needsPrice');
+                          }
+                        })}
+                      />
+                      {errors.isActiveAE ? <p className="ms-7 mt-1 text-[11px] font-semibold text-red-600">{errors.isActiveAE.message}</p> : null}
+                      {/* منتج قديم بلا إعداد إمارات — يظهر «غير مُعَدَّة» بجلاء بدل حقول صامتة */}
+                      {!watchIsActiveAE && (watchPriceAE === '' || watchPriceAE == null) ? (
+                        <p className="ms-7 mt-1 text-[11px] font-semibold text-amber-600">{t('a6.ae.notSet')}</p>
+                      ) : null}
+                    </div>
+                  </div>
+                </section>
               </div>
             </div>
 
@@ -645,6 +772,17 @@ export default function AdminProducts() {
         confirmText={t('common.delete')}
         cancelText={t('common.cancel')}
         danger
+      />
+
+      {/* Gate 2: تأكيد صريح قبل النسخ الرقمي الحرفي مصر → الإمارات (لا تحويل عملة) */}
+      <ConfirmDialog
+        open={bulkConfirm === 'copyAE'}
+        onClose={() => setBulkConfirm(null)}
+        onConfirm={() => bulkAction('copy-eg-to-ae-price')}
+        title={`${t('a6.bulk.copyEGtoAE')} (${selected.length})`}
+        message={t('a6.bulk.copyEGtoAEConfirm')}
+        confirmText={t('a6.bulk.copyEGtoAE')}
+        cancelText={t('common.cancel')}
       />
     </>
   );

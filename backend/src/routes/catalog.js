@@ -173,8 +173,16 @@ const normalizeProductInput = (body, old = {}) => {
   }
   for (const k of ['price','oldPrice','cost','rating','soldCount','stock','discount','isFeatured','isBestSeller','isNewArrival','isActive','isActiveAE','trackInventory']) if (body[k] !== undefined) row[k] = ['isFeatured','isBestSeller','isNewArrival','isActive','isActiveAE','trackInventory'].includes(k) ? (body[k]?1:0) : body[k];
   /* تسعير الإمارات (المرحلة D/K): قيم REAL قابلة للفراغ — '' تعني «بلا سعر إماراتي» ⇒ NULL
-     ولا يتحوّل أي سعر مصري إلى إماراتي آلياً أبداً؛ الإدمن يكتب الأرقام صراحةً. */
-  for (const k of ['priceAE','oldPriceAE']) if (body[k] !== undefined) row[k] = (body[k] === '' || body[k] === null) ? null : Number(body[k]);
+     ولا يتحوّل أي سعر مصري إلى إماراتي آلياً أبداً؛ الإدمن يكتب الأرقام صراحةً.
+     Gate 2: الخادم هو المرجع — payload مزيّف بسعر سالب/غير رقمي كان سيُخزَّن ويصبح
+     المنتج قابلاً للبيع في الإمارات بالسالب (البوابة تفحص NULL فقط). يُرفض الآن 400. */
+  for (const k of ['priceAE','oldPriceAE']) {
+    if (body[k] === undefined) continue;
+    if (body[k] === '' || body[k] === null) { row[k] = null; continue; }
+    const n = Number(body[k]);
+    if (!Number.isFinite(n) || n < 0) throw new FriendlyError('سعر الإمارات يجب أن يكون رقماً صالحاً لا يقل عن صفر', 400);
+    row[k] = n;
+  }
   for (const k of ['images','variants','colors','sizes','tags','metaKeywords']) if (body[k] !== undefined) row[k] = stringify(body[k] || []);
   if (!row.slug && (row.nameEn||row.name)) row.slug = slugify(row.nameEn || row.name);
   if (!row.sku) row.sku = `${(row.nameEn||row.name||'SKU').replace(/[^A-Za-z0-9]+/g,'').slice(0,6) || 'SKU'}-${Date.now().toString(36).toUpperCase()}`;

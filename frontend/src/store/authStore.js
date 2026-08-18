@@ -5,6 +5,7 @@ import { notifyGenderChange } from '@/i18n';
 import { readStorage, removeStorage, writeStorage } from '@/utils/helpers';
 import { useCartStore } from '@/store/cartStore';
 import { useWishlistStore } from '@/store/wishlistStore';
+import { useCountryStore } from '@/store/countryStore';
 
 /**
  * ينسب السلة والمفضلة للمستخدم الحالي.
@@ -37,6 +38,9 @@ export const useAuthStore = create((set, get) => ({
     if (token) writeStorage(STORAGE_KEYS.token, token);
     set({ user, token: token || get().token });
     bindUserData(user?._id || user?.id);
+    /* دولة المستخدم المحفوظة في الخادم تتقدّم على قيمة الزائر المحلية،
+       ولا تتقدّم على اختيار صريح تمّ في هذه الجلسة (countryStore) */
+    useCountryStore.getState().syncFromUser(user?.country);
     /**
      * صيغة المخاطبة العربية تتبع الملف الشخصي.
      * نكتبها في التخزين مباشرة (لا عبر i18n) لأن المتجر قد يستدعي
@@ -121,6 +125,8 @@ export const useAuthStore = create((set, get) => ({
         writeStorage(STORAGE_KEYS.user, data.user);
         set({ user: data.user });
         bindUserData(data.user._id || data.user.id);
+        // نفس معالجة setSession لدولة المستخدم (توحيد المسارين)
+        useCountryStore.getState().syncFromUser(data.user.country);
       }
     } catch (err) {
       // توكن منتهٍ/ملغى → ننهي الجلسة بدل إبقاء واجهة "مسجّل دخول" معطلة

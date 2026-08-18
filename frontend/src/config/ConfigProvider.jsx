@@ -4,6 +4,7 @@ import { setCurrency } from '@/utils/format';
 import { localizedBrandName } from '@/utils/helpers';
 import { useI18n, registerExtraTranslations } from '@/i18n';
 import { useCartStore } from '@/store/cartStore';
+import { useCountryStore } from '@/store/countryStore';
 import { useThemeStore } from '@/store/themeStore';
 import { findPreset } from './themePresets';
 import { fontHref } from './fonts';
@@ -384,6 +385,14 @@ export function ConfigProvider({ children }) {
         setConfig({ ...FALLBACK, ...data, settings: { ...FALLBACK.settings, ...data.settings } });
         setMaintenance(null);
         setConfigError(false);
+        /**
+         * قائمة الدول النشطة عند الخادم هي المرجع الوحيد المقبول
+         * (countryStore). أي دولة محفوظة محلياً وغير موجودة هنا تُسقَط
+         * إلى الافتراضية المُعلنة من الخادم. لا يوجد أي منطق دولة آخر هنا.
+         */
+        useCountryStore
+          .getState()
+          .setActiveCountries(data.countries, { defaultCode: data.country?.code });
       }
     } catch (err) {
       if (err?.response?.status === 503 && err.response.data?.maintenance) {

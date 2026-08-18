@@ -114,6 +114,8 @@ export const STORAGE_KEYS = {
   token: 'alzeina_token',
   user: 'alzeina_user',
   cart: 'alzeina_cart',
+  /** الدولة المختارة (EG | AE) — المصدر الوحيد store/countryStore.js */
+  country: 'alzeina_country',
   wishlist: 'alzeina_wishlist',
   lang: 'alzeina_lang',
   /** صيغة المخاطبة العربية (male | female) — تفضيل عرض فقط */

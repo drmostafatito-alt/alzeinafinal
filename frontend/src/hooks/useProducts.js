@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { brandService, categoryService, bannerService, contentService, productService } from '@/services';
 import { useUIStore } from '@/store/uiStore';
+import { useCountryStore } from '@/store/countryStore';
 import { useEffect } from 'react';
 
 /** يعلّم واجهة المستخدم أننا في وضع البيانات التجريبية */
@@ -14,8 +15,9 @@ function useDemoFlag(result) {
 const opts = { staleTime: 5 * 60 * 1000, retry: 1 };
 
 export function useProducts(params = {}) {
+  const country = useCountryStore((s) => s.country);
   const query = useQuery({
-    queryKey: ['products', params],
+    queryKey: ['products', country, params],
     queryFn: () => productService.list(params),
     ...opts,
     placeholderData: (prev) => prev,
@@ -30,7 +32,8 @@ export function useProducts(params = {}) {
 
 const collection = (key, fn) =>
   function useCollection(limit = 8) {
-    const query = useQuery({ queryKey: [key, limit], queryFn: () => fn(limit), ...opts });
+    const country = useCountryStore((s) => s.country);
+    const query = useQuery({ queryKey: [key, country, limit], queryFn: () => fn(limit), ...opts });
     useDemoFlag(query.data);
     return { ...query, products: query.data?.data?.products || [] };
   };
@@ -41,8 +44,9 @@ export const useNewArrivals = collection('newArrivals', productService.newArriva
 export const useOnSaleProducts = collection('onSale', productService.onSale);
 
 export function useProduct(slugOrId) {
+  const country = useCountryStore((s) => s.country);
   const query = useQuery({
-    queryKey: ['product', slugOrId],
+    queryKey: ['product', country, slugOrId],
     queryFn: () => productService.bySlug(slugOrId),
     enabled: Boolean(slugOrId),
     ...opts,
@@ -52,8 +56,9 @@ export function useProduct(slugOrId) {
 }
 
 export function useRelatedProducts(productId, limit = 8) {
+  const country = useCountryStore((s) => s.country);
   const query = useQuery({
-    queryKey: ['related', productId, limit],
+    queryKey: ['related', country, productId, limit],
     queryFn: () => productService.related(productId, limit),
     enabled: Boolean(productId),
     ...opts,
@@ -63,9 +68,10 @@ export function useRelatedProducts(productId, limit = 8) {
 
 /** منتجات محددة يدوياً من بانى الصفحة (مصدر manual) */
 export function useProductsByIds(ids = []) {
+  const country = useCountryStore((s) => s.country);
   const key = Array.isArray(ids) ? ids.join(',') : '';
   const query = useQuery({
-    queryKey: ['products-ids', key],
+    queryKey: ['products-ids', country, key],
     queryFn: () => productService.byIds(ids),
     enabled: Boolean(key),
     ...opts,
@@ -74,7 +80,8 @@ export function useProductsByIds(ids = []) {
 }
 
 export function useCategories() {
-  const query = useQuery({ queryKey: ['categories'], queryFn: categoryService.list, ...opts });
+  const country = useCountryStore((s) => s.country);
+  const query = useQuery({ queryKey: ['categories', country], queryFn: categoryService.list, ...opts });
   useDemoFlag(query.data);
   return { ...query, categories: query.data?.data?.categories || [] };
 }
@@ -106,8 +113,9 @@ export function useInstagramFeed() {
 }
 
 export function useSearchSuggestions(term) {
+  const country = useCountryStore((s) => s.country);
   const query = useQuery({
-    queryKey: ['suggestions', term],
+    queryKey: ['suggestions', country, term],
     queryFn: () => productService.suggestions(term),
     enabled: Boolean(term && term.trim().length >= 2),
     staleTime: 60 * 1000,

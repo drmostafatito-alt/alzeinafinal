@@ -6,7 +6,10 @@ import CollectionSection from '@/components/home/CollectionSection';
 import StoreEmptyNotice from '@/components/home/StoreEmptyNotice';
 import { SectionShell, BannerBlock, TextBlock, ImageTextBlock, FaqBlock, CtaBlock, SpacerBlock } from '@/components/home/blocks';
 import { useBestSellers, useFeaturedProducts, useNewArrivals, useOnSaleProducts, useProductsByIds } from '@/hooks';
+import { useQuery } from '@tanstack/react-query';
 import { useConfig } from '@/config/ConfigProvider';
+import { useCountryStore } from '@/store/countryStore';
+import { productService } from '@/services';
 import { applyGender, useI18n } from '@/i18n';
 import { localized } from '@/utils/helpers';
 
@@ -63,12 +66,23 @@ export default function Home() {
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   }, [dbSections]);
 
-  const stillLoading = featured.isLoading || bestSellers.isLoading || newArrivals.isLoading;
-  const isStoreEmpty =
-    !stillLoading &&
-    !featured.products.length &&
-    !bestSellers.products.length &&
-    !newArrivals.products.length;
+  /* Gate 3B: «المتجر فارغ» تُحسم من كتالوج البلد المحسوم خادمياً نفسه،
+     لا من ثلاث قوائم موسومة. سابقاً كان غياب featured/bestSeller/newArrival
+     وحده يطوي الصفحة كلها إلى StoreEmptyNotice — فبدت صفحة الإمارات «فارغة»
+     وهي تحمل أقساماً وماركات ومحتوى؛ وأي بلد بمنتجات غير موسومة كان سينهار
+     بنفس الطريقة. مجسّ مخصص بلا staleTime حتى لا يبقى القرار قديماً بعد
+     إجراءات الإدارة (قوائم المتجر العامة لها staleTime خمس دقائق): البلد من
+     countryStore ومفتاح الاستعلام يحمله، والخادم هو الذي يحسم العدد —
+     لا يوجد أي فلترة محلية لبيانات بلد آخر. الانهيار فقط عندما لا يملك
+     بلدُ الطلب أي منتج متاح إطلاقاً، والأقسام الفارغة المفردة تُخفى
+     ذاتياً كما هو مصمم (CollectionSection يرجع null). */
+  const country = useCountryStore((s) => s.country);
+  const catalogProbe = useQuery({
+    queryKey: ['products', country, 'catalog-empty-probe'],
+    queryFn: () => productService.list({ limit: 1 })
+  });
+  const catalogTotal = catalogProbe.data?.data?.pagination?.total;
+  const isStoreEmpty = !catalogProbe.isLoading && catalogTotal === 0;
 
   /** يختار مجموعة المنتجات المناسبة لمصدر القسم */
   const sourceFor = (source) => {

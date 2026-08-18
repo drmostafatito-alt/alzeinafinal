@@ -3,9 +3,42 @@ import { all, first, run } from '../lib/db.js';
 import { ok, created, nowIso, uuid, parseJson } from '../lib/response.js';
 import { getSettings, publicSettings, updateSettings } from '../services/settings.js';
 import { countryMiddleware, shippingForCountry, filterMethodsForCountry } from '../services/country.js';
+import { calculateShipping } from '../services/pricing.js';
 import { verifyJwt } from '../lib/crypto.js';
 
 const app = new Hono();
+
+async function ensureAaniMethod(env) {
+  try {
+    const existing = await first(env.DB.prepare("SELECT id FROM payment_methods WHERE id='pm-aani' OR code='aani'"));
+    if (!existing) {
+      await run(
+        env.DB.prepare(
+          "INSERT OR IGNORE INTO payment_methods(id, code, name, nameEn, description, instructions, logo, type, isActive, isVisible, requiresProof, requiresReference, feeType, feeValue, sortOrder, config, createdAt, updatedAt) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+        ).bind(
+          'pm-aani',
+          'aani',
+          'آني',
+          'Aani',
+          'الدفع عبر منصة آني (Aani) للمدفوعات الفورية في الإمارات',
+          'حوّلي المبلغ عبر تطبيق آني (Aani) باستخدام المعرّف الموضح، ثم ارفعي صورة الإيصال لإتمام الطلب.',
+          '',
+          'manual',
+          1,
+          1,
+          1,
+          1,
+          'fixed',
+          0,
+          2,
+          JSON.stringify({ countries: ['AE'] }),
+          nowIso(),
+          nowIso()
+        )
+      );
+    }
+  } catch { /* noop */ }
+}
 
 /* المرحلة D: حلّ البلد مركزياً لكل مسارات المتجر العامة (المحافظات/الدفع/الشحن).
    حلّ البلد يحدث مرة واحدة هنا ويُقرأ من c.var.country/countryRow في كل المعالجات. */
@@ -28,6 +61,7 @@ async function canPreview(c) {
 }
 
 app.get('/storefront/config', async c => {
+  await ensureAaniMethod(c.env);
   const s = await getSettings(c.env);
   const preview = await canPreview(c);
   /* البلد المحسوب خادمياً — العملة والشحن والمحافظات ووسائل الدفع كلها من D1 */
@@ -102,20 +136,29 @@ app.get('/storefront/config', async c => {
   return ok(c, data);
 });
 app.get('/storefront/payment-methods', async c => {
+  await ensureAaniMethod(c.env);
   const methods=(await all(c.env.DB.prepare('SELECT * FROM payment_methods WHERE isActive=1 AND isVisible=1 ORDER BY sortOrder ASC'))).map(m=>{ const cfg=parseJson(m.config,{}); return {...m,...cfg,_id:m.id,config:cfg}; });
   return ok(c,{ paymentMethods: filterMethodsForCountry(methods, c.get('country')) });
 });
 app.get('/storefront/shipping/quote', async c => {
-  const s=await getSettings(c.env);
-  const countryRow=c.get('countryRow');
-  const ship=shippingForCountry(s.shipping, countryRow);           // قواعد البلد نفسه — بلا أي تحويل عملة
-  const code=c.req.query('governorateCode') || c.req.query('governorate') || c.req.query('governorateId');
-  const rows=await all(c.env.DB.prepare('SELECT * FROM governorates WHERE isActive=1 AND countryCode=? ORDER BY sortOrder,name').bind(countryRow.code));
-  const governorate=rows.find(g=>g.code===code || g.id===code);
-  /* محافظة/إمارة من بلدٍ آخر لا تُقبل إطلاقاً — إعادة استخدام نفس رفض «غير متاحة» */
-  if (!governorate) return c.json({status:'error',message:'المحافظة غير متاحة'},400);
-  const cost = governorate?.shippingCost ?? ship.defaultCost; const threshold=ship.freeShippingThreshold; const subtotal=Number(c.req.query('subtotal'))||0;
-  return ok(c,{ country: countryRow.code, cost: ship.freeShippingEnabled && subtotal>=threshold ? 0 : cost, free: ship.freeShippingEnabled && subtotal>=threshold, threshold, governorate, estimatedDays:{min:ship.estimatedDaysMin,max:ship.estimatedDaysMax} });
+  const s = await getSettings(c.env);
+  const countryRow = c.get('countryRow');
+  const country = c.get('country');
+  const code = c.req.query('governorateCode') || c.req.query('governorate') || c.req.query('governorateId');
+  const subtotal = Number(c.req.query('subtotal')) || 0;
+  const quote = await calculateShipping(c.env, s, { governorateCode: code, governorateId: code, subtotal, country, countryRow });
+  if (quote.invalid || !quote.governorate || !quote.governorate.isActive) {
+    return c.json({ status: 'error', message: 'المحافظة المختارة غير متاحة' }, 400);
+  }
+  const ship = shippingForCountry(s.shipping, countryRow);
+  return ok(c, {
+    country: countryRow.code,
+    cost: quote.cost,
+    free: quote.free,
+    threshold: Number(ship.freeShippingThreshold) || 0,
+    governorate: quote.governorate,
+    estimatedDays: quote.estimate
+  });
 });
 app.get('/storefront/governorates', async c => ok(c,{ country: c.get('country'), governorates: await all(c.env.DB.prepare('SELECT * FROM governorates WHERE isActive=1 AND countryCode=? ORDER BY sortOrder,name').bind(c.get('country'))) }));
 app.get('/storefront/pages', async c => ok(c,{ pages: await all(c.env.DB.prepare("SELECT id,title,titleEn,slug,status,showInFooter FROM pages WHERE isActive=1 AND status='published' ORDER BY sortOrder,title")) }));

@@ -13,6 +13,7 @@ import RowActions from '@/components/admin/RowActions';
 import { TableSkeleton } from '@/components/ui/Skeleton';
 import client from '@/api/client';
 import { useI18n } from '@/i18n';
+import { useConfig } from '@/config/ConfigProvider';
 import { cn } from '@/utils/helpers';
 
 const TABS = ['general', 'governorates', 'zones', 'companies'];
@@ -20,7 +21,17 @@ const TABS = ['general', 'governorates', 'zones', 'companies'];
 export default function AdminShipping() {
   const { t, lang } = useI18n();
   const qc = useQueryClient();
+  const { reload: reloadConfig } = useConfig();
   const [tab, setTab] = useState('general');
+  const [selectedCountry, setSelectedCountry] = useState('EG');
+
+  /* ---------- إعدادات البلاد من D1 ---------- */
+  const { data: countriesData } = useQuery({
+    queryKey: ['admin', 'countries'],
+    queryFn: () => client.get('/admin/countries').then((r) => r.data?.data)
+  });
+  const countriesList = countriesData?.countries || [];
+  const currentCountryRow = countriesList.find((c) => c.code === selectedCountry) || null;
 
   /* ---------- الإعدادات العامة ---------- */
   const { data: settingsData, isLoading: loadingSettings } = useQuery({
@@ -29,30 +40,76 @@ export default function AdminShipping() {
   });
 
   const settingsForm = useForm();
+
   useEffect(() => {
-    if (settingsData?.shipping) settingsForm.reset(settingsData.shipping);
-  }, [settingsData, settingsForm]);
+    const baseShipping = settingsData?.shipping || {};
+    let overrides = {};
+    if (currentCountryRow?.shipping) {
+      try {
+        overrides = typeof currentCountryRow.shipping === 'string' ? JSON.parse(currentCountryRow.shipping) : currentCountryRow.shipping;
+      } catch { /* noop */ }
+    }
+    const merged = { ...baseShipping, ...overrides };
+    settingsForm.reset({
+      enabled: merged.enabled !== false,
+      codEnabled: merged.codEnabled !== false,
+      freeShippingEnabled: merged.freeShippingEnabled !== false,
+      defaultCost: Number(merged.defaultCost) || 0,
+      freeShippingThreshold: Number(merged.freeShippingThreshold) || 0,
+      estimatedDaysMin: Number(merged.estimatedDaysMin) || 2,
+      estimatedDaysMax: Number(merged.estimatedDaysMax) || 5,
+      note: merged.note || ''
+    });
+  }, [settingsData, currentCountryRow, selectedCountry, settingsForm]);
 
   const saveSettings = useMutation({
-    mutationFn: (shipping) => client.put('/admin/settings', { shipping }),
+    mutationFn: async (shipping) => {
+      // نحفظ التجاوزات الخاصة بالبلد في جدول countries
+      if (selectedCountry) {
+        await client.put(`/admin/countries/${selectedCountry}`, {
+          shipping: JSON.stringify(shipping)
+        });
+      }
+      // إذا كانت مصر، نحدث أيضاً الإعدادات العامة
+      if (selectedCountry === 'EG') {
+        await client.put('/admin/settings', { shipping });
+      }
+    },
     onSuccess: () => {
       toast.success(t('admin.saved'));
       qc.invalidateQueries({ queryKey: ['admin', 'settings'] });
+      qc.invalidateQueries({ queryKey: ['admin', 'countries'] });
+      qc.invalidateQueries({ queryKey: ['storefront', 'config'] });
+      reloadConfig?.();
     },
     onError: () => toast.error(t('common.error'))
   });
 
-  /* ---------- المحافظات ---------- */
-  const { data: govData } = useQuery({
-    queryKey: ['admin', 'governorates'],
-    queryFn: () => client.get('/admin/governorates').then((r) => r.data?.data)
+  /* ---------- المحافظات / الإمارات ---------- */
+  const { data: govData, isLoading: loadingGovs } = useQuery({
+    queryKey: ['admin', 'governorates', selectedCountry],
+    queryFn: () => client.get('/admin/governorates', { params: { countryCode: selectedCountry } }).then((r) => r.data?.data)
   });
   const governorates = govData?.governorates || [];
   const [dirty, setDirty] = useState({});
-  /* Gate 2: البلد حقل إلزامي عند الإنشاء (مصر افتراضي) — كان يُسقَط خلفياً
-     فتُسجَّل الإمارات الجديدة مصرية بالخطأ. القائمة الخلفية باتت تقبل countryCode. */
-  const govForm = useForm({ defaultValues: { name:'', nameEn:'', code:'', countryCode:'EG', shippingCost:50, codEnabled:true } });
-  const saveGov = useMutation({ mutationFn: (v) => client.post('/admin/governorates', v), onSuccess: () => { toast.success(t('admin.saved')); govForm.reset(); qc.invalidateQueries({queryKey:['admin','governorates']}); }, onError:(e)=>toast.error(e?.response?.data?.message||t('common.error')) });
+
+  const govForm = useForm({ defaultValues: { name: '', nameEn: '', code: '', countryCode: selectedCountry, shippingCost: 50, codEnabled: true } });
+
+  useEffect(() => {
+    govForm.setValue('countryCode', selectedCountry);
+  }, [selectedCountry, govForm]);
+
+  const saveGov = useMutation({
+    mutationFn: (v) => client.post('/admin/governorates', { ...v, countryCode: selectedCountry }),
+    onSuccess: () => {
+      toast.success(t('admin.saved'));
+      govForm.reset({ name: '', nameEn: '', code: '', countryCode: selectedCountry, shippingCost: 50, codEnabled: true });
+      qc.invalidateQueries({ queryKey: ['admin', 'governorates'] });
+      qc.invalidateQueries({ queryKey: ['storefront', 'config'] });
+      reloadConfig?.();
+    },
+    onError: (e) => toast.error(e?.response?.data?.message || t('common.error'))
+  });
 
   const saveGovs = useMutation({
     mutationFn: (items) => client.put('/admin/governorates-bulk', { items }),
@@ -60,13 +117,19 @@ export default function AdminShipping() {
       toast.success(t('admin.saved'));
       setDirty({});
       qc.invalidateQueries({ queryKey: ['admin', 'governorates'] });
+      qc.invalidateQueries({ queryKey: ['storefront', 'config'] });
+      reloadConfig?.();
     },
     onError: () => toast.error(t('common.error'))
   });
 
   const toggleGov = useMutation({
     mutationFn: ({ id, field }) => client.patch(`/admin/governorates/${id}/${field}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin', 'governorates'] })
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin', 'governorates'] });
+      qc.invalidateQueries({ queryKey: ['storefront', 'config'] });
+      reloadConfig?.();
+    }
   });
 
   /* ---------- المناطق ---------- */
@@ -87,6 +150,7 @@ export default function AdminShipping() {
       toast.success(t('admin.saved'));
       setZoneModal(null);
       qc.invalidateQueries({ queryKey: ['admin', 'shipping-zones'] });
+      reloadConfig?.();
     },
     onError: (e) => toast.error(e?.response?.data?.message || t('common.error'))
   });
@@ -98,6 +162,7 @@ export default function AdminShipping() {
       toast.success(t('admin.deleted'));
       setDeleteZone(null);
       qc.invalidateQueries({ queryKey: ['admin', 'shipping-zones'] });
+      reloadConfig?.();
     }
   });
 
@@ -119,6 +184,7 @@ export default function AdminShipping() {
       toast.success(t('admin.saved'));
       setCompanyModal(null);
       qc.invalidateQueries({ queryKey: ['admin', 'shipping-companies'] });
+      reloadConfig?.();
     },
     onError: (e) => toast.error(e?.response?.data?.message || t('common.error'))
   });
@@ -130,14 +196,48 @@ export default function AdminShipping() {
       toast.success(t('admin.deleted'));
       setDeleteCompany(null);
       qc.invalidateQueries({ queryKey: ['admin', 'shipping-companies'] });
+      reloadConfig?.();
     }
   });
 
   const zoneOptions = zones.map((z) => ({ value: z._id, label: z.name }));
+  const currencyLabel = selectedCountry === 'AE' ? 'د.إ (AED)' : 'ج.م (EGP)';
 
   return (
     <>
       <AdminPageHeader title={t('admin.shipping')} />
+
+      {/* شريط اختيار الدولة لجميع التبويبات */}
+      <div className="mb-4 flex items-center justify-between gap-3 rounded-2xl border border-black/5 bg-white p-3 shadow-soft">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-bold text-ink-muted">البلد المستهدف:</span>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => { setSelectedCountry('EG'); setDirty({}); }}
+              className={cn(
+                'flex items-center gap-1.5 rounded-full px-4 py-1.5 text-xs font-bold transition',
+                selectedCountry === 'EG' ? 'bg-rose text-white shadow-sm' : 'border border-black/10 bg-cream text-ink hover:border-rose'
+              )}
+            >
+              <span>🇪🇬</span>
+              <span>مصر (EGP)</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => { setSelectedCountry('AE'); setDirty({}); }}
+              className={cn(
+                'flex items-center gap-1.5 rounded-full px-4 py-1.5 text-xs font-bold transition',
+                selectedCountry === 'AE' ? 'bg-rose text-white shadow-sm' : 'border border-black/10 bg-cream text-ink hover:border-rose'
+              )}
+            >
+              <span>🇦🇪</span>
+              <span>الإمارات (AED)</span>
+            </button>
+          </div>
+        </div>
+        <Badge variant="blush">{currencyLabel}</Badge>
+      </div>
 
       <div className="mb-5 flex gap-2 overflow-x-auto pb-1 no-scrollbar">
         {TABS.map((key) => (
@@ -150,9 +250,12 @@ export default function AdminShipping() {
               tab === key ? 'bg-ink text-white' : 'border border-black/10 bg-white text-ink hover:border-rose hover:text-rose'
             )}
           >
-            {key === 'general' ? t('admin.settings')
-              : key === 'governorates' ? `${t('admin.governorates')} (${governorates.length})`
-              : key === 'zones' ? `${t('admin.zones')} (${zones.length})`
+            {key === 'general'
+              ? `${t('admin.settings')} (${selectedCountry === 'AE' ? 'الإمارات' : 'مصر'})`
+              : key === 'governorates'
+              ? `${selectedCountry === 'AE' ? 'الإمارات والمدن' : t('admin.governorates')} (${governorates.length})`
+              : key === 'zones'
+              ? `${t('admin.zones')} (${zones.length})`
               : `${t('admin.companies')} (${companies.length})`}
           </button>
         ))}
@@ -167,106 +270,184 @@ export default function AdminShipping() {
             onSubmit={settingsForm.handleSubmit((v) =>
               saveSettings.mutate({
                 ...v,
-                defaultCost: Number(v.defaultCost),
-                freeShippingThreshold: Number(v.freeShippingThreshold),
-                estimatedDaysMin: Number(v.estimatedDaysMin),
-                estimatedDaysMax: Number(v.estimatedDaysMax)
+                defaultCost: Number(v.defaultCost) || 0,
+                freeShippingThreshold: Number(v.freeShippingThreshold) || 0,
+                estimatedDaysMin: Number(v.estimatedDaysMin) || 2,
+                estimatedDaysMax: Number(v.estimatedDaysMax) || 5
               })
             )}
             className="rounded-2xl border border-black/5 bg-white p-6 shadow-soft"
           >
+            <div className="mb-4 flex items-center justify-between border-b border-black/5 pb-3">
+              <h3 className="text-sm font-bold text-ink">
+                إعدادات الشحن العامة — {selectedCountry === 'AE' ? 'الإمارات العربية المتحدة 🇦🇪' : 'جمهورية مصر العربية 🇪🇬'}
+              </h3>
+              <Badge variant="blush">{currencyLabel}</Badge>
+            </div>
             <div className="mb-5 space-y-3">
               <Checkbox label={t('admin.shipping')} {...settingsForm.register('enabled')} />
               <Checkbox label={t('checkout.cod')} {...settingsForm.register('codEnabled')} />
               <Checkbox label={t('admin.freeShipping')} {...settingsForm.register('freeShippingEnabled')} />
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
-              <Input label={`${t('cart.shipping')} (${t('common.currency')})`} type="number" {...settingsForm.register('defaultCost')} />
-              <Input label={t('admin.threshold')} type="number" {...settingsForm.register('freeShippingThreshold')} />
+              <Input label={`${t('cart.shipping')} الافتراضي (${currencyLabel})`} type="number" {...settingsForm.register('defaultCost')} />
+              <Input label={`${t('admin.threshold')} للشحن المجاني (${currencyLabel})`} type="number" {...settingsForm.register('freeShippingThreshold')} />
               <Input label={`${t('admin.deliveryDays')} — ${t('shop.minPrice')}`} type="number" {...settingsForm.register('estimatedDaysMin')} />
               <Input label={`${t('admin.deliveryDays')} — ${t('shop.maxPrice')}`} type="number" {...settingsForm.register('estimatedDaysMax')} />
               <Textarea label={t('common.description')} rows={2} containerClassName="sm:col-span-2" {...settingsForm.register('note')} />
             </div>
             <Button type="submit" loading={saveSettings.isPending} icon={FiSave} className="mt-5">
-              {t('common.save')}
+              {t('common.save')} ({selectedCountry === 'AE' ? 'الإمارات' : 'مصر'})
             </Button>
           </form>
         )
       ) : null}
 
-      {/* ---------- المحافظات ---------- */}
+      {/* ---------- المحافظات / الإمارات ---------- */}
       {tab === 'governorates' ? (
         <>
           <div className="mb-4 overflow-hidden rounded-2xl border border-black/5 bg-white shadow-soft">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-black/5 p-4">
-              <p className="text-sm text-ink-muted">{t('admin.governorates')} ({governorates.length})</p>
+              <div>
+                <p className="text-sm font-bold text-ink">
+                  {selectedCountry === 'AE' ? 'إمارات الدولة (7)' : 'محافظات مصر (27)'} — {governorates.length}
+                </p>
+                <p className="text-[11px] text-ink-muted">
+                  تعديل أسعار الشحن وحالة التفعيل يتم حفظها مباشرة في قاعدة البيانات D1.
+                </p>
+              </div>
               {Object.keys(dirty).length > 0 ? (
-                <Button size="sm" icon={FiSave} loading={saveGovs.isPending} onClick={() => saveGovs.mutate(Object.entries(dirty).map(([id, v]) => ({ id, ...v })))}>
+                <Button
+                  size="sm"
+                  icon={FiSave}
+                  loading={saveGovs.isPending}
+                  onClick={() =>
+                    saveGovs.mutate(
+                      Object.entries(dirty).map(([id, v]) => {
+                        const target = governorates.find((x) => (x._id || x.id) === id);
+                        return { id, ...target, ...v, countryCode: selectedCountry };
+                      })
+                    )
+                  }
+                >
                   {t('common.save')} ({Object.keys(dirty).length})
                 </Button>
               ) : null}
             </div>
-            <div className="max-h-[560px] overflow-y-auto">
-              <table className="w-full text-sm">
-                <thead className="sticky top-0 bg-cream/90 text-xs uppercase text-ink-muted backdrop-blur">
-                  <tr>
-                    <th className="px-4 py-3 text-start font-bold">{t('checkout.governorate')}</th>
-                    <th className="px-4 py-3 text-start font-bold">{t('admin.zones')}</th>
-                    <th className="px-4 py-3 text-start font-bold">{t('cart.shipping')}</th>
-                    <th className="px-4 py-3 text-center font-bold">{t('checkout.cod')}</th>
-                    <th className="px-4 py-3 text-center font-bold">{t('common.status')}</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-black/5">
-                  {governorates.map((g) => (
-                    <tr key={g._id} className={cn('transition', !g.isActive && 'opacity-50')}>
-                      <td className="px-4 py-2.5">
-                        <p className="text-sm font-semibold text-ink">{lang === 'ar' ? g.name : g.nameEn || g.name}</p>
-                        <p className="font-en text-[10px] text-ink-muted">{g.code}</p>
-                      </td>
-                      <td className="px-4 py-2.5">
-                        <select
-                          defaultValue={g.zoneId || ''}
-                          onChange={(e) => setDirty((d) => ({ ...d, [g._id]: { ...d[g._id], zoneId: e.target.value } }))}
-                          className="rounded-lg border border-black/10 bg-white px-2 py-1.5 text-xs outline-none focus:border-rose"
-                        >
-                          <option value="">—</option>
-                          {zoneOptions.map((z) => <option key={z.value} value={z.value}>{z.label}</option>)}
-                        </select>
-                      </td>
-                      <td className="px-4 py-2.5">
-                        <input type="number" defaultValue={g.shippingCost ?? ''} onChange={(e) => setDirty((d) => ({ ...d, [g._id]: { ...d[g._id], shippingCost: e.target.value === '' ? null : Number(e.target.value) } }))} className="w-24 rounded-lg border border-black/10 px-2 py-1.5 text-xs outline-none focus:border-rose" />
-                      </td>
-                      <td className="px-4 py-2.5 text-center">
-                        <input type="checkbox" checked={!!g.codEnabled} onChange={() => toggleGov.mutate({ id: g._id, field: 'codEnabled' })} className="h-4 w-4 accent-rose" />
-                      </td>
-                      <td className="px-4 py-2.5 text-center">
-                        <button type="button" onClick={() => toggleGov.mutate({ id: g._id, field: 'isActive' })}>
-                          <Badge variant={g.isActive ? 'success' : 'neutral'}>{g.isActive ? t('common.active') : t('common.inactive')}</Badge>
-                        </button>
-                      </td>
+            {loadingGovs ? (
+              <TableSkeleton rows={6} cols={4} />
+            ) : (
+              <div className="max-h-[560px] overflow-y-auto">
+                <table className="w-full text-sm">
+                  <thead className="sticky top-0 bg-cream/90 text-xs uppercase text-ink-muted backdrop-blur">
+                    <tr>
+                      <th className="px-4 py-3 text-start font-bold">
+                        {selectedCountry === 'AE' ? 'الإمارة / المنطقة' : t('checkout.governorate')}
+                      </th>
+                      <th className="px-4 py-3 text-start font-bold">{t('admin.zones')}</th>
+                      <th className="px-4 py-3 text-start font-bold">سعر الشحن ({currencyLabel})</th>
+                      <th className="px-4 py-3 text-center font-bold">{t('checkout.cod')}</th>
+                      <th className="px-4 py-3 text-center font-bold">{t('common.status')}</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody className="divide-y divide-black/5">
+                    {governorates.map((g) => {
+                      const id = g._id || g.id;
+                      const isRowDirty = Boolean(dirty[id]);
+                      return (
+                        <tr key={id} className={cn('transition', !g.isActive && 'opacity-50', isRowDirty && 'bg-amber-50/50')}>
+                          <td className="px-4 py-2.5">
+                            <p className="text-sm font-semibold text-ink">{lang === 'ar' ? g.name : g.nameEn || g.name}</p>
+                            <p className="font-en text-[10px] text-ink-muted">{g.code}</p>
+                          </td>
+                          <td className="px-4 py-2.5">
+                            <select
+                              defaultValue={g.zoneId || ''}
+                              onChange={(e) =>
+                                setDirty((d) => ({ ...d, [id]: { ...d[id], zoneId: e.target.value } }))
+                              }
+                              className="rounded-lg border border-black/10 bg-white px-2 py-1.5 text-xs outline-none focus:border-rose"
+                            >
+                              <option value="">—</option>
+                              {zoneOptions.map((z) => (
+                                <option key={z.value} value={z.value}>
+                                  {z.label}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                          <td className="px-4 py-2.5">
+                            <input
+                              type="number"
+                              min="0"
+                              defaultValue={g.shippingCost ?? ''}
+                              onChange={(e) =>
+                                setDirty((d) => ({
+                                  ...d,
+                                  [id]: {
+                                    ...d[id],
+                                    shippingCost: e.target.value === '' ? null : Math.max(0, Number(e.target.value) || 0)
+                                  }
+                                }))
+                              }
+                              className="w-28 rounded-lg border border-black/10 px-2.5 py-1.5 text-xs font-bold outline-none focus:border-rose"
+                            />
+                          </td>
+                          <td className="px-4 py-2.5 text-center">
+                            <input
+                              type="checkbox"
+                              checked={g.codEnabled !== false && g.codEnabled !== 0}
+                              onChange={() => toggleGov.mutate({ id, field: 'codEnabled' })}
+                              className="h-4 w-4 accent-rose cursor-pointer"
+                            />
+                          </td>
+                          <td className="px-4 py-2.5 text-center">
+                            <button type="button" onClick={() => toggleGov.mutate({ id, field: 'isActive' })}>
+                              <Badge variant={g.isActive ? 'success' : 'neutral'}>
+                                {g.isActive ? t('common.active') : t('common.inactive')}
+                              </Badge>
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
 
           <div className="rounded-2xl border border-black/5 bg-white p-5 shadow-soft">
-            <h3 className="mb-4 text-sm font-bold text-ink">{t('common.add')} / {t('common.edit')}</h3>
-            <form onSubmit={govForm.handleSubmit((v) => saveGov.mutate({ ...v, isActive: true, codEnabled: v.codEnabled ?? true, shippingCost: Number(v.shippingCost || 50) }))} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
+            <h3 className="mb-4 text-sm font-bold text-ink">
+              {t('common.add')} {selectedCountry === 'AE' ? 'إمارة جديدة' : 'محافظة جديدة'}
+            </h3>
+            <form
+              onSubmit={govForm.handleSubmit((v) =>
+                saveGov.mutate({
+                  ...v,
+                  countryCode: selectedCountry,
+                  isActive: true,
+                  codEnabled: v.codEnabled ?? true,
+                  shippingCost: Number(v.shippingCost || 25)
+                })
+              )}
+              className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6"
+            >
               <Input label={`${t('common.name')} (AR)`} required {...govForm.register('name', { required: true })} />
               <Input label={`${t('common.name')} (EN)`} dir="ltr" {...govForm.register('nameEn')} />
               <Input label="Code" dir="ltr" required {...govForm.register('code', { required: true })} />
               <Select
                 label={t('gov.country')}
+                value={selectedCountry}
+                disabled
                 options={[{ value: 'EG', label: 'مصر 🇪🇬' }, { value: 'AE', label: 'الإمارات 🇦🇪' }]}
-                {...govForm.register('countryCode')}
               />
-              <Input label={t('cart.shipping')} type="number" {...govForm.register('shippingCost')} />
+              <Input label={`سعر الشحن (${currencyLabel})`} type="number" {...govForm.register('shippingCost')} />
               <div className="flex items-end gap-3">
                 <Checkbox label={t('checkout.cod')} {...govForm.register('codEnabled')} />
-                <Button type="submit" loading={saveGov.isPending}>{t('common.add')}</Button>
+                <Button type="submit" loading={saveGov.isPending}>
+                  {t('common.add')}
+                </Button>
               </div>
             </form>
           </div>
@@ -347,8 +528,12 @@ export default function AdminShipping() {
           </div>
           <Checkbox label={t('common.active')} {...zoneForm.register('isActive')} />
           <div className="flex gap-3 pt-2">
-            <Button type="submit" loading={saveZone.isPending} className="flex-1">{t('common.save')}</Button>
-            <Button type="button" variant="outline" onClick={() => setZoneModal(null)}>{t('common.cancel')}</Button>
+            <Button type="submit" loading={saveZone.isPending} className="flex-1">
+              {t('common.save')}
+            </Button>
+            <Button type="button" variant="outline" onClick={() => setZoneModal(null)}>
+              {t('common.cancel')}
+            </Button>
           </div>
         </form>
       </Modal>
@@ -360,7 +545,7 @@ export default function AdminShipping() {
             <Input label={`${t('common.name')} (AR)`} required {...companyForm.register('name', { required: true })} />
             <Input label={`${t('common.name')} (EN)`} dir="ltr" {...companyForm.register('nameEn')} />
             <Input label={t('common.phone')} dir="ltr" {...companyForm.register('name')} />
-            <Input label={t('common.email')} type="email" dir="ltr"  />
+            <Input label={t('common.email')} type="email" dir="ltr" />
             <Input
               label={t('admin.tracking')}
               dir="ltr"
@@ -371,8 +556,12 @@ export default function AdminShipping() {
           </div>
           <Checkbox label={t('common.active')} {...companyForm.register('isActive')} />
           <div className="flex gap-3 pt-2">
-            <Button type="submit" loading={saveCompany.isPending} className="flex-1">{t('common.save')}</Button>
-            <Button type="button" variant="outline" onClick={() => setCompanyModal(null)}>{t('common.cancel')}</Button>
+            <Button type="submit" loading={saveCompany.isPending} className="flex-1">
+              {t('common.save')}
+            </Button>
+            <Button type="button" variant="outline" onClick={() => setCompanyModal(null)}>
+              {t('common.cancel')}
+            </Button>
           </div>
         </form>
       </Modal>

@@ -84,7 +84,7 @@ app.post('/', optionalAuth, async c => {
   const couponDisc = coupon ? couponDiscount(coupon, subtotal) : 0;
   /* الشحن: المحافظة/الإمارة تُطابَق داخل البلد المحسوم، وقواعد الشحن من إعداداته هو */
   const quote = await calculateShipping(c.env, settings, { governorateCode:body.governorateCode, governorateId:body.governorateId, subtotal: subtotal-couponDisc, country, countryRow });
-  if (!quote.governorate || !quote.governorate.isActive) return fail(c,'المحافظة المختارة غير متاحة',400);
+  if (quote.invalid || !quote.governorate || !quote.governorate.isActive) return fail(c,'المحافظة المختارة غير متاحة',400);
   // الدفع عند الاستلام: يجب احترام إيقافه عاماً (قواعد البلد المدمجة) أو على مستوى المحافظة (codEnabled).
   if (String(body.paymentMethod).toLowerCase() === 'cod') {
     if (shipRules.codEnabled === false) return fail(c,'الدفع عند الاستلام غير متاح حالياً',400);

@@ -489,6 +489,7 @@ export function ConfigProvider({ children }) {
       return;
     }
     countryRef.current = country;
+    useCartStore.getState().setShippingGovernorate(null);
     setLoading(true);
     load();
   }, [country, load]);

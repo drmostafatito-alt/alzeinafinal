@@ -54,7 +54,29 @@ for (const [path] of Object.entries(RESOURCES)) {
 }
 app.put('/categories-reorder', adminOrModerator, async c => { const b=await c.req.json(); await reorderResource(c.env,'categories',b.items||b); return ok(c,{}); });
 app.put('/brands-reorder', adminOrModerator, async c => { const b=await c.req.json(); await reorderResource(c.env,'brands',b.items||b); return ok(c,{}); });
-app.put('/governorates-bulk', adminOrModerator, async c => { const { items=[] }=await c.req.json(); const now=nowIso(); await c.env.DB.batch(items.map((g,i)=>c.env.DB.prepare('UPDATE governorates SET name=?,nameEn=?,code=?,isActive=?,sortOrder=?,updatedAt=? WHERE id=?').bind(g.name,g.nameEn,g.code,g.isActive?1:0,i,now,g.id))); return ok(c,{updated:items.length}); });
+app.put('/governorates-bulk', adminOrModerator, async c => {
+  const { items = [] } = await c.req.json();
+  const now = nowIso();
+  const stmts = items.map((g, i) => {
+    let countryCode = String(g.countryCode || '').trim().toUpperCase();
+    if (!['EG', 'AE'].includes(countryCode)) {
+      countryCode = (g.id && String(g.id).includes('-ae-')) || (g.code && String(g.code).startsWith('AE-')) ? 'AE' : 'EG';
+    }
+    const cost = g.shippingCost !== undefined && g.shippingCost !== null && g.shippingCost !== ''
+      ? Math.max(0, Number(g.shippingCost) || 0)
+      : null;
+    const cod = g.codEnabled === false || g.codEnabled === 0 ? 0 : 1;
+    const active = g.isActive === false || g.isActive === 0 ? 0 : 1;
+    const zone = g.zoneId || null;
+    const sort = g.sortOrder !== undefined ? Number(g.sortOrder) || 0 : i;
+
+    return c.env.DB.prepare(
+      'UPDATE governorates SET name=?, nameEn=?, code=?, countryCode=?, shippingCost=?, codEnabled=?, zoneId=?, isActive=?, sortOrder=?, updatedAt=? WHERE id=?'
+    ).bind(g.name || '', g.nameEn || '', g.code || '', countryCode, cost, cod, zone, active, sort, now, g.id);
+  });
+  if (stmts.length) await c.env.DB.batch(stmts);
+  return ok(c, { updated: items.length });
+});
 
 app.get('/notifications', adminOrModerator, async c => {
   /* جرس الإشعارات كان يقرأ unreadCount غير الموجود في الرد — العدّاد كان صفراً دائماً.

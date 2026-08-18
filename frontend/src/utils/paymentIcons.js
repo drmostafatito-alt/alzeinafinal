@@ -13,6 +13,7 @@ export const PAYMENT_ICONS = {
   wallet: FiSmartphone,
   bank: FiCreditCard,
   instapay: FiZap,
+  aani: FiZap,
   'vodafone-cash': FiSmartphone,
   'etisalat-cash': FiSmartphone,
   'orange-cash': FiSmartphone,

@@ -162,12 +162,17 @@ export async function listResource(env, resource, query = {}) {
   const where = []; const params = {};
   if (query.isActive !== undefined && query.isActive !== '') { where.push('isActive = @isActive'); params.isActive = bool(query.isActive) ? 1 : 0; }
   if (query.status) { where.push('status = @status'); params.status = query.status; }
+  if (query.countryCode && TABLE_COLUMNS[resource]?.includes('countryCode')) {
+    where.push('countryCode = @countryCode');
+    params.countryCode = String(query.countryCode).toUpperCase();
+  }
   if (query.q) { where.push(`(${def.search.map((s,i)=>`${s} LIKE @q${i}`).join(' OR ')})`); def.search.forEach((s,i)=>params[`q${i}`]=`%${query.q}%`); }
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
-  const safeWhere = whereSql.replaceAll('@isActive','?').replaceAll('@status','?').replace(/@q\d+/g,'?');
+  const safeWhere = whereSql.replaceAll('@isActive','?').replaceAll('@status','?').replaceAll('@countryCode','?').replace(/@q\d+/g,'?');
   const bindVals = [];
   if (query.isActive !== undefined && query.isActive !== '') bindVals.push(bool(query.isActive)?1:0);
   if (query.status) bindVals.push(query.status);
+  if (query.countryCode && TABLE_COLUMNS[resource]?.includes('countryCode')) bindVals.push(String(query.countryCode).toUpperCase());
   if (query.q) def.search.forEach(()=>bindVals.push(`%${query.q}%`));
   const total = (await env.DB.prepare(`SELECT COUNT(*) n FROM ${def.table} ${safeWhere}`).bind(...bindVals).first()).n;
   /* جداول بلا عمود sortOrder (مثل flash_sales) كانت تكسر الاستعلام بـ no such column */

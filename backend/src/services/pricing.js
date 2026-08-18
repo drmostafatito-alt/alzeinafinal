@@ -13,31 +13,61 @@ export async function calculateShipping(env, settings, { governorateCode, govern
   const amount = Number(subtotal) || 0;
   const ship = countryRow ? shippingForCountry(settings.shipping, countryRow) : (settings.shipping || {});
   let governorate = null;
-  if (governorateId || governorateCode) {
+  const targetCode = governorateCode || governorateId;
+
+  if (targetCode) {
     if (country) {
       governorate = governorateId
-        ? await first(env.DB.prepare('SELECT * FROM governorates WHERE id=? AND countryCode=?').bind(governorateId, country))
-        : await first(env.DB.prepare('SELECT * FROM governorates WHERE code=? AND countryCode=?').bind(governorateCode, country));
+        ? await first(env.DB.prepare('SELECT * FROM governorates WHERE id=? AND countryCode=? AND isActive=1').bind(governorateId, country))
+        : await first(env.DB.prepare('SELECT * FROM governorates WHERE code=? AND countryCode=? AND isActive=1').bind(governorateCode, country));
     } else {
-      governorate = governorateId ? await first(env.DB.prepare('SELECT * FROM governorates WHERE id=?').bind(governorateId)) : await first(env.DB.prepare('SELECT * FROM governorates WHERE code=?').bind(governorateCode));
+      governorate = governorateId
+        ? await first(env.DB.prepare('SELECT * FROM governorates WHERE id=? AND isActive=1').bind(governorateId))
+        : await first(env.DB.prepare('SELECT * FROM governorates WHERE code=? AND isActive=1').bind(governorateCode));
+    }
+    // إذا تم تمرير محافظة من بلد آخر أو غير مفعّلة/غير موجودة ← مرفوضة صراحة
+    if (!governorate) {
+      return { cost: 0, free: false, governorate: null, invalid: true, estimate: { min: ship.estimatedDaysMin || 2, max: ship.estimatedDaysMax || 5 } };
     }
   }
-  // الشحن المجاني يجب ألا يُسقط بيانات المحافظة — كان الإرجاع المبكر بـ governorate:null
-  // يجعل orders.js يرفض أي طلب فوق حد الشحن المجاني برسالة "المحافظة المختارة غير متاحة".
-  if (ship.freeShippingEnabled && ship.freeShippingThreshold && amount >= ship.freeShippingThreshold) {
-    return { cost: 0, free:true, governorate, estimate:{min:ship.estimatedDaysMin||2,max:ship.estimatedDaysMax||5} };
+
+  const estimate = { min: ship.estimatedDaysMin || 2, max: ship.estimatedDaysMax || 5 };
+  let cost = Number(ship.defaultCost) || 0;
+
+  if (governorate && governorate.shippingCost !== undefined && governorate.shippingCost !== null) {
+    cost = Number(governorate.shippingCost) || 0;
   }
-  let cost = ship.defaultCost || 0; let estimate = { min:ship.estimatedDaysMin||2, max:ship.estimatedDaysMax||5 };
-  if (governorate && typeof governorate.shippingCost === 'number') cost = governorate.shippingCost;
-  if (governorate && governorate.zoneId) { const z=await first(env.DB.prepare('SELECT * FROM shipping_zones WHERE id=? AND isActive=1').bind(governorate.zoneId)); if (z) { cost=z.cost; if (z.freeThreshold && amount>=z.freeThreshold) cost=0; if (z.estimatedDaysMin) estimate={min:z.estimatedDaysMin,max:z.estimatedDaysMax}; } }
+
+  if (governorate && governorate.zoneId) {
+    const z = await first(env.DB.prepare('SELECT * FROM shipping_zones WHERE id=? AND isActive=1').bind(governorate.zoneId));
+    if (z) {
+      cost = z.cost;
+      if (z.freeThreshold && amount >= z.freeThreshold) cost = 0;
+      if (z.estimatedDaysMin) estimate.min = z.estimatedDaysMin;
+      if (z.estimatedDaysMax) estimate.max = z.estimatedDaysMax;
+    }
+  }
+
   const zones = await all(env.DB.prepare('SELECT * FROM shipping_zones WHERE isActive=1'));
   for (const z of zones) {
-    const ids = parseJson(z.governorateIds,[]);
+    const ids = parseJson(z.governorateIds, []);
     if (ids.includes(governorate?.id) || ids.includes(governorate?.code) || ids.includes(governorateCode)) {
-      cost = z.cost; if (z.freeThreshold && amount >= z.freeThreshold) cost=0; if (z.estimatedDaysMin) estimate={min:z.estimatedDaysMin,max:z.estimatedDaysMax}; break;
+      cost = z.cost;
+      if (z.freeThreshold && amount >= z.freeThreshold) cost = 0;
+      if (z.estimatedDaysMin) estimate.min = z.estimatedDaysMin;
+      if (z.estimatedDaysMax) estimate.max = z.estimatedDaysMax;
+      break;
     }
   }
-  return { cost: round2(cost), free: cost===0, governorate, estimate };
+
+  // الشحن المجاني ينطبق فقط إذا كان مفعّلاً صراحة وله حد أدنى > 0 والمبلغ حققه
+  const freeThreshold = Number(ship.freeShippingThreshold) || 0;
+  const isFree = ship.freeShippingEnabled !== false && freeThreshold > 0 && amount >= freeThreshold;
+  if (isFree) {
+    return { cost: 0, free: true, governorate, estimate };
+  }
+
+  return { cost: round2(cost), free: cost === 0, governorate, estimate };
 }
 
 export async function calculatePaymentFee(env, { methodCode, methodId, amount }) {

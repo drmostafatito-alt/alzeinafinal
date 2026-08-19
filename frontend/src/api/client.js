@@ -3,7 +3,23 @@ import { STORAGE_KEYS } from '@/utils/constants';
 import { readStorage, removeStorage } from '@/utils/helpers';
 import { useCountryStore, DEFAULT_COUNTRY } from '@/store/countryStore';
 
-export const API_BASE = import.meta.env.VITE_API_URL || '/api/v1';
+/**
+ * عنوان الـ API الأساسي.
+ *
+ * - الإنتاج (Cloudflare Pages): يُبنى تلقائياً على عنوان الـ Worker المطلق.
+ *   طلب نسبي مثل /api/v1 كان يُحل على نطاق Pages (al-zeina-store.pages.dev)
+ *   فيفشل بـ 405 بدلاً من الوصول للـ Worker. يمكن تجاوز العنوان بـ
+ *   VITE_API_URL فقط إذا كان مطلقاً (https://…) — عناوين نسبية في الإنتاج
+ *   تُتجاهل عمداً حتى لا تعود المشكلة.
+ * - التطوير المحلي: يبقى عبر البروكسي كما هو (/api/v1 → VITE_PROXY_TARGET
+ *   في vite.config.js)، ما لم يُضبط VITE_API_URL صراحةً.
+ */
+const PROD_API_BASE = 'https://al-zeina-api.michiamo-tito.workers.dev/api/v1';
+export const API_BASE = import.meta.env.PROD
+  ? (/^https?:\/\//i.test(String(import.meta.env.VITE_API_URL || ''))
+      ? String(import.meta.env.VITE_API_URL).replace(/\/+$/, '')
+      : PROD_API_BASE)
+  : (import.meta.env.VITE_API_URL || '/api/v1');
 
 const client = axios.create({
   baseURL: API_BASE,
@@ -41,6 +57,14 @@ const readCookie = (name) => {
   return match ? decodeURIComponent(match[2]) : null;
 };
 
+/**
+ * توكن CSRF محفوظ في الذاكرة لبقية الجلسة.
+ * عند فصل النطاقات (الواجهة على Pages والـ API على Workers) لا يمكن قراءة
+ * كوكي csrfToken عبر document.cookie لأن الكوكي يُضبط على نطاق الـ API فقط،
+ * لذا نعتمد على التوكن الذي يرجع في جسم استجابة GET /csrf-token.
+ */
+let cachedCsrfToken = null;
+
 const UNSAFE = ['post', 'put', 'patch', 'delete'];
 
 client.interceptors.request.use(async (config) => {
@@ -54,11 +78,12 @@ client.interceptors.request.use(async (config) => {
 
   // الخادم يطبّق double-submit CSRF على الطلبات المغيّرة للحالة
   if (UNSAFE.includes(String(config.method).toLowerCase())) {
-    let csrf = readCookie('csrfToken');
+    let csrf = readCookie('csrfToken') || cachedCsrfToken;
     if (!csrf) {
       try {
-        await axios.get(`${API_BASE}/csrf-token`, { withCredentials: true });
-        csrf = readCookie('csrfToken');
+        const res = await axios.get(`${API_BASE}/csrf-token`, { withCredentials: true });
+        csrf = res?.data?.data?.csrfToken || readCookie('csrfToken');
+        if (csrf) cachedCsrfToken = csrf;
       } catch {
         /* الخادم قد يكون معطّلاً للحماية — نكمل بدون رمز */
       }

@@ -4,23 +4,9 @@ compatibility_date = "2024-12-01"
 compatibility_flags = ["nodejs_compat"]
 workers_dev = true
 
-# ---------------------------------------------------------------------------
-# DEPLOYMENT REQUIRED (not production-ready as committed):
-# - Create D1:  wrangler d1 create al-zeina-db
-# - Paste the real UUID into database_id below. Do not invent an ID.
-# - Create R2 buckets al-zeina-media and al-zeina-media-preview (or rename).
-# - Set dashboard/vars: CORS_ORIGINS to exact Pages/custom origins (never *).
-# - wrangler secret put JWT_SECRET
-# - wrangler secret put RESEND_API_KEY  (if EMAIL_PROVIDER=resend)
-# - Set RESET_LINK_BASE_URL, EMAIL_FROM, EMAIL_FROM_NAME
-# Remote deploy MUST fail or be incomplete until database_id is a real UUID.
-# ---------------------------------------------------------------------------
-
 [vars]
 ENVIRONMENT = "production"
-# Empty on purpose: production CORS is an allowlist. Set via dashboard, e.g.
-# CORS_ORIGINS = "https://your-store.pages.dev,https://your-domain.com"
-CORS_ORIGINS = ""
+CORS_ORIGINS = "https://al-zeina-store.pages.dev,https://3c17d5fb.al-zeina-store.pages.dev"
 JWT_EXPIRE = "1d"
 JWT_REMEMBER_EXPIRE = "30d"
 LOGIN_MAX_ATTEMPTS = "8"
@@ -30,20 +16,13 @@ ADMIN_EMAIL = "admin@alzeina.com"
 [[d1_databases]]
 binding = "DB"
 database_name = "al-zeina-db"
-# DEPLOYMENT REQUIRED: real D1 UUID from `wrangler d1 create` / dashboard.
-# Left unset-as-placeholder so this repo never claims a production database.
-database_id = "UNSET_SET_AFTER_D1_CREATE"
+database_id = "87df5a37-d5c1-4b27-9bfb-baae4943c997"
 migrations_dir = "migrations"
 
 [[r2_buckets]]
 binding = "R2"
 bucket_name = "al-zeina-media"
 preview_bucket_name = "al-zeina-media-preview"
-
-# Optional. Leave KV unbound if not used. The app runs without it.
-# [[kv_namespaces]]
-# binding = "CACHE"
-# id = "REPLACE_WITH_KV_ID"
 
 [triggers]
 crons = ["0 * * * *"]

@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { signJwt, hashPassword, verifyPassword, randomToken, sha256Hex } from '../lib/crypto.js';
+import { signJwt, hashPassword, verifyPassword, randomToken, sha256Hex, needsRehash } from '../lib/crypto.js';
 import { first, run, all, hydrate } from '../lib/db.js';
 import { created, fail, nowIso, parseJson, stringify, uuid } from '../lib/response.js';
 import { protect, sanitize } from '../middleware/auth.js';
@@ -57,6 +57,15 @@ async function login(c, staffOnly = false) {
   }
   if (staffOnly && !['admin','moderator'].includes(user.role)) return c.json(invalid,403);
   const now = nowIso();
+  /* Rehash-on-success: upgrade a verifiable hash that is not at the current
+     PBKDF2 iteration count. Runs only after verifyPassword() succeeded, so an
+     unverifiable legacy hash (iterations above the Workers cap) is never
+     touched here. Best-effort: a re-hash failure must not fail the login. */
+  if (needsRehash(user.passwordHash)) {
+    try {
+      await run(c.env.DB.prepare('UPDATE users SET passwordHash=?, updatedAt=? WHERE id=?').bind(await hashPassword(password), now, user.id));
+    } catch { /* ignore — never block a successful login on a rehash error */ }
+  }
   await run(c.env.DB.prepare('UPDATE users SET failedLoginAttempts=0, lockedUntil=NULL, lastLogin=?, lastActivityAt=?, sessionsValidFrom=? WHERE id=?').bind(now, now, user.sessionsValidFrom || now, user.id));
   const fresh = { ...user, lastLogin: now, lastActivityAt: now, failedLoginAttempts:0, lockedUntil:null };
   const sv = Math.floor(new Date(user.sessionsValidFrom || now).getTime()/1000);

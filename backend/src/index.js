@@ -76,7 +76,11 @@ app.get('/api/v1/csrf-token', (c) => {
   let token = getCookie(c, 'csrfToken');
   if (!token) {
     token = randomToken(18);
-    c.header('Set-Cookie', `csrfToken=${token}; Path=/; Max-Age=604800; SameSite=Lax${isProd(c.env) ? '; Secure' : ''}`);
+    /* SameSite=None in production: the storefront (Cloudflare Pages) and the
+       API (Workers) are on different sites, so the cookie must be sent on
+       cross-site XHR. None REQUIRES Secure — Secure is kept enabled in
+       production, and dev keeps Lax without Secure (unchanged local behavior). */
+    c.header('Set-Cookie', `csrfToken=${token}; Path=/; Max-Age=604800; SameSite=${isProd(c.env) ? 'None' : 'Lax'}${isProd(c.env) ? '; Secure' : ''}`);
   }
   return c.json({ status:'success', data:{ csrfToken:token } });
 });

@@ -12,7 +12,8 @@
     "db:generate:remote": "wrangler d1 execute al-zeina-db --remote --file=./migrations/0001_init.sql",
     "db:seed:local": "wrangler d1 execute al-zeina-db --local --file=./migrations/0002_seed.sql",
     "db:seed:remote": "wrangler d1 execute al-zeina-db --remote --file=./migrations/0002_seed.sql",
-    "tail": "wrangler tail"
+    "tail": "wrangler tail",
+    "test": "node --test"
   },
   "dependencies": {
     "hono": "^4.6.14",
